@@ -56,6 +56,40 @@ pip install --upgrade pip
 # 安装项目依赖
 echo "正在安装项目依赖..."
 pip install -r "$PROJECT_ROOT/requirements.txt"
+
+# Node.js 依赖安装
+echo ""
+echo "正在检查 Node.js..."
+
+if ! command -v node &> /dev/null; then
+    echo "⚠️  未安装 Node.js，跳过前端依赖安装"
+    echo "   请安装 Node.js 后运行: cd $PROJECT_ROOT && npm install"
+else
+    NODE_VERSION=$(node --version)
+    echo "✓ 检测到 Node.js $NODE_VERSION"
+
+    # 检查 node_modules 是否已存在
+    NODE_MODULES_PATH="$PROJECT_ROOT/node_modules"
+    if [ -d "$NODE_MODULES_PATH" ]; then
+        echo "⚠️  node_modules 已存在"
+        read -p "是否要重新安装? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "正在安装前端依赖..."
+            cd "$PROJECT_ROOT"
+            npm install
+            echo "✓ 前端依赖已安装"
+        else
+            echo "使用现有 node_modules。"
+        fi
+    else
+        echo "正在安装前端依赖..."
+        cd "$PROJECT_ROOT"
+        npm install
+        echo "✓ 前端依赖已安装"
+    fi
+fi
+
 echo ""
 echo "激活虚拟环境，请运行:"
 echo "  source $VENV_PATH/bin/activate"

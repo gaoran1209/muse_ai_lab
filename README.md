@@ -2,72 +2,85 @@
 
 AI-powered creative studio for generating fashion outfits, canvas art, and multimedia content.
 
-> **当前状态**: 基础脚手架搭建完成，正在添加外部模型 API 供应商。前端/后端业务逻辑尚未实现。
+> **当前状态**:
+> - 后端: 多厂商 AI 提供商封装完成
+> - 前端: 无限画布 MVP 已实现（React + Fabric.js）
 
 ## Project Structure
 
 ```
 muse_studio/
-├── .env                          # API Keys、配置（直接用，别过度抽象）
+├── .env                          # API Keys、配置
 ├── .env.example                  # 配置示例文件
 ├── .gitignore                    # Git 忽略规则
 ├── README.md                     # 项目说明文档
 ├── requirements.txt              # Python 依赖
-├── package.json                  # 前端依赖
-├── docs/                         # 所有文档合并到一处
-│   ├── PRD/                      # 产品需求(给人看)
-│   └── AI_PRD/                   # AI 实现PRD(给 AI 看)
+├── package.json                  # 前端依赖（根目录统一管理）
+├── pnpm-lock.yaml                # 前端依赖锁文件
+├── docs/                         # 文档目录
+│   ├── PRD/                      # 产品需求文档
+│   └── AI_PRD/                   # AI 实现指南
+│       ├── architecture.md       # 架构设计文档
 │       └── provider_sop.md       # 模型/供应商添加标准操作流程
-├── logs/                         # 日志目录（所有日志输出至此）
+├── logs/                         # 日志输出目录
 ├── scripts/                      # 项目运行与运维脚本
-│   ├── setup.sh                  # 环境构建脚本（创建 venv + 安装依赖）
-│   ├── restart.sh                # 重启服务脚本
-│   └── test.sh                   # 一键运行测试脚本
+│   ├── setup.sh                  # 初始化环境脚本
+│   └── test.sh                   # 运行测试脚本
 ├── src/                          # 源代码主目录
-│   ├── backend/                  # 后端（FastAPI）
-│   │   ├── main.py               # 入口 + 路由全在这，够用再拆
-│   │   ├── config.py             # 读 .env，暴露配置常量
-│   │   ├── database.py           # DB 连接（PostgreSQL 优先，简单够用）
-│   │   ├── models.py             # 所有 ORM 模型放一起（早期不用拆）
-│   │   ├── schemas.py            # 所有 Pydantic Schema 放一起
-│   │   ├── utils.py              # 日志、异常、工具函数全在一起
-│   │   ├── services/             # 核心业务逻辑（待实现）
-│   │   │   ├── generation.py     # 调度 AI 生成（重点逻辑放这）
-│   │   │   ├── outfit.py
-│   │   │   └── canvas.py
-│   │   └── providers/            # 外部 API 封装（正在开发中）
+│   ├── backend/                  # 后端代码（Python/FastAPI）
+│   │   ├── main.py               # FastAPI 入口
+│   │   ├── config.py             # 配置管理（读取 .env）
+│   │   ├── database.py           # 数据库连接
+│   │   ├── models.py             # ORM 模型
+│   │   ├── schemas.py            # Pydantic Schema
+│   │   ├── logger.py             # 日志配置
+│   │   ├── utils.py              # 工具函数
+│   │   ├── services/             # 核心业务逻辑
+│   │   │   ├── generation.py     # AI 生成调度服务
+│   │   │   ├── outfit.py         # Outfit 相关服务
+│   │   │   ├── canvas.py         # Canvas 相关服务
+│   │   │   ├── design.py         # Design 相关服务
+│   │   │   ├── feed.py           # Feed 相关服务
+│   │   │   ├── asset.py          # Asset 相关服务
+│   │   │   └── interaction.py    # Interaction 相关服务
+│   │   └── providers/            # 外部 API 封装层
 │   │       ├── llm/              # LLM 提供商
+│   │       │   ├── __init__.py   # 模块导出
 │   │       │   ├── base.py       # BaseLLMProvider 抽象基类
 │   │       │   ├── zhipu.py      # 智谱 AI 实现
 │   │       │   ├── gemini.py     # Google Gemini 实现
 │   │       │   └── thirtytwo.py  # 302.AI 模型聚合平台实现
 │   │       ├── image/            # 图像生成提供商
+│   │       │   ├── __init__.py   # 模块导出
 │   │       │   ├── base.py       # BaseImageProvider 抽象基类
-│   │       │   └── thirtytwo.py  # 302.AI 图像生成实现
+│   │       │   ├── thirtytwo_nano_banana.py  # 302.AI Nano Banana 模型
+│   │       │   └── thirtytwo_seedream.py     # 302.AI Seedream 模型
 │   │       └── video/            # 视频生成提供商
+│   │           ├── __init__.py   # 模块导出
 │   │           ├── base.py       # BaseVideoProvider 抽象基类
 │   │           └── thirtytwo_kling.py  # 302.AI Kling 视频生成实现
-│   └── frontend/                 # 前端（React + TS / 或直接用 HTML）
-│       ├── index.html
-│       ├── vite.config.ts
-│       └── src/
-│           ├── main.tsx
-│           ├── App.tsx
-│           ├── api.ts            # 所有接口请求统一放一个文件
-│           ├── store.ts          # 状态管理（Zustand，一个文件够）
-│           ├── types.ts          # 所有类型定义放一起
-│           ├── components/       # 组件（扁平放，别过早分 ui/business）
-│           │   ├── OutfitCard.tsx
-│           │   ├── CanvasEditor.tsx
-│           │   └── GenerationPanel.tsx
-│           ├── pages/
-│           │   ├── Home.tsx
-│           │   ├── Canvas.tsx
-│           │   └── Generation.tsx
-│           └── hooks/
-│               └── useGeneration.ts  # 轮询生成状态（值得单独一个 hook）
-└── tests/                        # 测试（新增代码必须添加测试）
-    ├── conftest.py               # 测试配置/夹具
+│   └── frontend/                 # 前端代码（React/TypeScript）
+│       ├── index.html            # HTML 入口
+│       ├── vite.config.ts        # Vite 配置
+│       ├── tsconfig.json         # TypeScript 配置
+│       └── src/                  # 前端源码
+│           ├── main.tsx          # React 入口
+│           ├── App.tsx           # 应用根组件
+│           ├── App.css           # 全局样式
+│           ├── types.ts          # 类型定义 + 常量
+│           ├── store.ts          # Zustand 状态管理
+│           ├── pages/            # 页面组件
+│           │   ├── Home.tsx      # 首页
+│           │   └── Canvas.tsx    # 画布页面
+│           ├── components/       # 通用组件
+│           │   ├── CanvasEditor.tsx    # 画布编辑器入口
+│           │   └── canvas/             # 画布相关组件
+│           │       ├── InfiniteCanvas.tsx  # 无限画布核心组件
+│           │       └── InfiniteCanvas.css  # 画布样式
+│           └── hooks/            # 自定义 Hooks
+│               └── useFabricCanvas.ts  # Fabric.js 封装
+└── tests/                        # 测试目录
+    ├── conftest.py               # Pytest 配置
     ├── llm/                      # LLM 提供商测试
     │   ├── test_zhipu.py         # 智谱 AI 测试
     │   ├── test_gemini.py        # Gemini 测试
@@ -78,30 +91,54 @@ muse_studio/
         └── test_thirtytwo_kling.py  # 302.AI Kling 视频测试
 ```
 
+---
 
-### 已实现的厂商
+## 已实现的厂商
 
-#### LLM 提供商
+### LLM 提供商
 
 | 厂商 | 类名 | 状态 | 推荐模型 |
 |------|------|------|----------|
 | 智谱 AI | `ZhipuProvider` | ✅ 已实现 | `glm-4.7-flash` |
 | Google Gemini | `GeminiProvider` | ✅ 已实现 | `gemini-2.5-flash` |
 | 302.AI | `ThirtyTwoProvider` | ✅ 已实现 | `gemini-2.5-flash` |
-| OpenAI | `OpenAIProvider` | 🚧 待实现 | - |
-| Anthropic | `AnthropicProvider` | 🚧 待实现 | - |
 
-#### 图像生成提供商
+### 图像生成提供商
 
 | 厂商 | 类名 | 状态 | 推荐模型 |
 |------|------|------|----------|
-| 302.AI | `ThirtyTwoImageProvider` | ✅ 已实现 | `google/nano-banana-2` / `doubao-seedream-5-0-260128` |
+| 302.AI Nano Banana | `ThirtyTwoNanoBananaProvider` | ✅ 已实现 | `google/nano-banana-2` |
+| 302.AI Seedream | `ThirtyTwoSeedreamProvider` | ✅ 已实现 | `doubao-seedream-5-0-260128` |
 
-#### 视频生成提供商
+### 视频生成提供商
 
 | 厂商 | 类名 | 状态 | 推荐模型 |
 |------|------|------|----------|
 | 302.AI Kling | `ThirtyTwoKlingProvider` | ✅ 已实现 | `kling-v-1-5-260121` / `kling-v2-5-turbo` |
+
+---
+
+## 前端功能
+
+### 无限画布 MVP
+
+- **平移模式**: 空格键或工具栏按钮切换
+- **缩放**: 鼠标滚轮缩放（以鼠标位置为中心）
+- **元素操作**: 选择、拖拽、删除（Delete/Backspace）
+- **文字编辑**: 双击文字进入编辑模式
+- **图片上传**: 点击按钮或拖拽上传
+- **坐标转换**: 屏幕坐标 ↔ 画布坐标自动转换
+
+### 技术栈
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| React | 18.3+ | UI 框架 |
+| TypeScript | 5.7+ | 类型安全 |
+| Vite | 6.0+ | 构建工具 |
+| Fabric.js | 6.4+ | 画布渲染引擎 |
+| Zustand | 5.0+ | 状态管理 |
+| React Router | 7.13+ | 路由管理 |
 
 ---
 
@@ -130,24 +167,30 @@ cp .env.example .env
 ./scripts/test.sh tests/llm/        # 仅 LLM 测试
 ./scripts/test.sh tests/image/      # 仅图像测试
 ./scripts/test.sh tests/video/      # 仅视频测试
-./scripts/test.sh tests/llm/test_zhipu.py  # 指定文件
 ```
 
-### 4. 查看日志
+### 4. 启动前端开发服务器
 
 ```bash
-# 测试日志（带时间戳）
-ls -lt logs/test_*.log | head -1 | xargs tail -f
+# 安装前端依赖（根目录）
+pnpm install
 
-# 实时监控最新日志
-tail -f logs/test_*.log
+# 启动开发服务器
+pnpm run dev
 ```
 
-### 5. 启动服务
+访问地址:
+- 首页: http://localhost:5173/
+- 画布页: http://localhost:5173/canvas
+
+### 5. 构建前端
 
 ```bash
-./scripts/restart.sh  # 重启后端服务
+pnpm run build          # 构建生产版本
+pnpm run preview        # 预览生产构建
 ```
+
+---
 
 ## 开发规范
 
@@ -167,6 +210,7 @@ tail -f logs/test_*.log
 - **提交规范**: 使用 Conventional Commits（feat/fix/refactor/docs/test）
 - **测试覆盖**: 新增代码必须添加测试，核心路径 80%+ 覆盖率
 - **日志输出**: 所有日志输出到 `logs/` 目录
+- **前端架构**: 扁平化优先，避免过度抽象，使用相对导入
 - **文档**: 代码变更同步更新 README
 
 ## License
