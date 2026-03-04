@@ -44,6 +44,7 @@ muse_studio/
 │   │   │   ├── asset.py          # Asset 相关服务
 │   │   │   └── interaction.py    # Interaction 相关服务
 │   │   └── providers/            # 外部 API 封装层
+│   │       ├── param_spec.py     # 参数元数据定义（ParamSpec 数据类）
 │   │       ├── llm/              # LLM 提供商
 │   │       │   ├── __init__.py   # 模块导出
 │   │       │   ├── base.py       # BaseLLMProvider 抽象基类
@@ -81,14 +82,17 @@ muse_studio/
 │               └── useFabricCanvas.ts  # Fabric.js 封装
 └── tests/                        # 测试目录
     ├── conftest.py               # Pytest 配置
-    ├── llm/                      # LLM 提供商测试
-    │   ├── test_zhipu.py         # 智谱 AI 测试
-    │   ├── test_gemini.py        # Gemini 测试
-    │   └── test_thirtytwo.py     # 302.AI 测试
-    ├── image/                    # 图像提供商测试
-    │   └── test_thirtytwo.py     # 302.AI 图像测试
-    └── video/                    # 视频提供商测试
-        └── test_thirtytwo_kling.py  # 302.AI Kling 视频测试
+    └── providers/                # Provider 测试
+        ├── test_param_spec.py    # 参数元数据测试
+        ├── llm/                  # LLM 提供商测试
+        │   ├── test_zhipu.py     # 智谱 AI 测试
+        │   ├── test_gemini.py    # Gemini 测试
+        │   └── test_thirtytwo.py # 302.AI 测试
+        ├── image/                # 图像提供商测试
+        │   ├── test_thirtytwo_nano_banana.py  # Nano Banana 测试
+        │   └── test_thirtytwo_seedream.py     # Seedream 测试
+        └── video/                # 视频提供商测试
+            └── test_thirtytwo_kling.py  # Kling 视频测试
 ```
 
 ---
@@ -164,9 +168,9 @@ cp .env.example .env
 ./scripts/test.sh
 
 # 运行指定类型测试
-./scripts/test.sh tests/llm/        # 仅 LLM 测试
-./scripts/test.sh tests/image/      # 仅图像测试
-./scripts/test.sh tests/video/      # 仅视频测试
+./scripts/test.sh tests/providers/llm/    # 仅 LLM 测试
+./scripts/test.sh tests/providers/image/  # 仅图像测试
+./scripts/test.sh tests/providers/video/  # 仅视频测试
 ```
 
 ### 4. 启动前端开发服务器
@@ -201,8 +205,37 @@ pnpm run preview        # 预览生产构建
 1. 创建 Provider 文件：`src/backend/providers/<type>/<vendor>.py`
 2. 更新模块导出：`__init__.py`
 3. 添加配置项：`config.py` + `.env.example`
-4. 创建测试：`tests/<type>/test_<vendor>.py`
-5. 运行测试验证：`./scripts/test.sh`
+4. 定义参数元数据：`GENERATE_PARAMS` 类属性（使用 `ParamSpec`）
+5. 创建测试：`tests/providers/<type>/test_<vendor>.py`
+6. 运行测试验证：`./scripts/test.sh`
+
+### 参数元数据系统
+
+每个 Provider 通过 `GENERATE_PARAMS` 定义参数规范：
+
+```python
+from ..param_spec import ParamSpec
+
+class CustomProvider(BaseLLMProvider):
+    GENERATE_PARAMS = (
+        ParamSpec(
+            name="temperature",
+            type=float,
+            exposed=True,          # 是否对外暴露（前端展示）
+            default=1.0,
+            description="控制输出的随机性",
+            choices=None,
+            required=False,
+        ),
+        # ...
+    )
+```
+
+获取对外暴露的参数：
+```python
+exposed_params = CustomProvider.get_exposed_params()
+provider_info = CustomProvider.get_provider_info()
+```
 
 ### 通用规范
 
