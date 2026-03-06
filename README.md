@@ -6,6 +6,10 @@ AI-powered creative studio for generating fashion outfits, canvas art, and multi
 > - 后端: 多厂商 AI 提供商封装完成
 > - 前端: 无限画布 MVP 已实现（React + Fabric.js）
 
+### 画布页面预览
+
+![Canvas 页面示例](public/example.png)
+
 ## Project Structure
 
 ```
@@ -83,7 +87,9 @@ muse_studio/
 │           │   ├── CanvasEditor.tsx    # 画布编辑器入口
 │           │   └── canvas/             # 画布相关组件
 │           │       ├── InfiniteCanvas.tsx  # 无限画布核心组件
-│           │       └── InfiniteCanvas.css  # 画布样式
+│           │       ├── InfiniteCanvas.css  # 画布样式（深色主题 + 点阵网格）
+│           │       ├── BottomPromptBar.tsx # 底部生成面板（图片/视频 + 厂商 + 参数 chips）
+│           │       └── BottomPromptBar.css # 底部面板样式（毛玻璃风格）
 │           └── hooks/            # 自定义 Hooks
 │               └── useFabricCanvas.ts  # Fabric.js 封装
 └── tests/                        # 测试目录
@@ -278,14 +284,19 @@ open http://localhost:8000/docs
 
 ## 前端功能
 
-### 无限画布 MVP
+### 无限画布（深色节点编辑器风格）
 
-- **平移模式**: 空格键或工具栏按钮切换
+**UI 风格**：深色背景（`#111113`）+ 动态点阵网格，毛玻璃面板
+
+- **左侧工具栏**: 文字、上传图片、平移（手型图标）、缩放 +/-
+- **底部生成面板**: 图片/视频模式切换、厂商选择、参数 chips、⌘+Enter 快捷生成
+- **图片边框**: 上传/生成的图片带半透明白色边框，最大 280px，无旋转/缩放控制手柄
+- **平移模式**: 空格键或侧边栏按钮切换
 - **缩放**: 鼠标滚轮缩放（以鼠标位置为中心）
 - **元素操作**: 选择、拖拽、删除（Delete/Backspace）
 - **文字编辑**: 双击文字进入编辑模式
-- **图片上传**: 点击按钮或拖拽上传
-- **坐标转换**: 屏幕坐标 ↔ 画布坐标自动转换
+- **图片上传**: 侧边栏按钮或拖拽到画布
+- **AI 生成**: 后端暴露参数自动渲染为 chips（下拉/开关/输入框），支持多厂商切换
 
 ### 技术栈
 

@@ -4,11 +4,20 @@ import { COLORS, LIMITS, type Viewport } from '../types';
 
 // ==================== Fabric 画布 Hook ====================
 
+export interface ImageSelectInfo {
+  canvasLeft: number;
+  canvasTop: number;
+  canvasWidth: number;
+  canvasHeight: number;
+}
+
 export interface UseFabricCanvasOptions {
   width?: number;
   height?: number;
   backgroundColor?: string;
   onViewportChange?: (viewport: Viewport) => void;
+  onImageSelect?: (info: ImageSelectInfo) => void;
+  onSelectionClear?: () => void;
 }
 
 export function useFabricCanvas(
@@ -26,6 +35,13 @@ export function useFabricCanvas(
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [isReady, setIsReady] = useState(false);
+
+  // 保持回调 refs 最新，避免事件监听器中的旧闭包
+  const onImageSelectRef = useRef(options.onImageSelect);
+  const onSelectionClearRef = useRef(options.onSelectionClear);
+
+  useEffect(() => { onImageSelectRef.current = options.onImageSelect; }, [options.onImageSelect]);
+  useEffect(() => { onSelectionClearRef.current = options.onSelectionClear; }, [options.onSelectionClear]);
 
   // 初始化画布
   useEffect(() => {
@@ -49,9 +65,40 @@ export function useFabricCanvas(
       canvas.requestRenderAll();
     });
 
-    // 监听对象旋转事件
-    canvas.on('object:rotating', () => {
-      canvas.requestRenderAll();
+    // 图片选中时通知外部
+    const notifyImageSelected = (obj: any) => {
+      if (obj?.type !== 'image') {
+        onSelectionClearRef.current?.();
+        return;
+      }
+      const w = obj.getScaledWidth();
+      const h = obj.getScaledHeight();
+      onImageSelectRef.current?.({
+        canvasLeft: obj.left - w / 2,
+        canvasTop: obj.top - h / 2,
+        canvasWidth: w,
+        canvasHeight: h,
+      });
+    };
+
+    canvas.on('selection:created', (e: any) => {
+      if (e.selected?.length === 1) {
+        notifyImageSelected(e.selected[0]);
+      } else {
+        onSelectionClearRef.current?.();
+      }
+    });
+
+    canvas.on('selection:updated', (e: any) => {
+      if (e.selected?.length === 1) {
+        notifyImageSelected(e.selected[0]);
+      } else {
+        onSelectionClearRef.current?.();
+      }
+    });
+
+    canvas.on('selection:cleared', () => {
+      onSelectionClearRef.current?.();
     });
 
     fabricCanvasRef.current = canvas;
@@ -124,7 +171,7 @@ export function useFabricCanvas(
     [onViewportChange]
   );
 
-  // 添加图片
+  // 添加图片（禁用旋转）
   const addImage = useCallback(
     async (url: string, options: { x?: number; y?: number; id?: string } = {}) => {
       const canvas = fabricCanvasRef.current;
@@ -137,18 +184,26 @@ export function useFabricCanvas(
 
         const { x = 100, y = 100, id } = options;
 
-        // 限制图片最大尺寸
-        const maxSize = 400;
+        // 限制图片最大尺寸（相对画布适中）
+        const maxSize = 280;
         const scale = Math.min(1, maxSize / Math.max(img.width!, img.height!));
         if (scale < 1) img.scale(scale);
 
-        // 设置 origin 为中心，使 x,y 为图片中心点
+        // 设置 origin 为中心；带边框，隐藏选择控制手柄
         img.set({
           left: x,
           top: y,
           originX: 'center',
           originY: 'center',
           selectable: true,
+          hasControls: false,
+          hasBorders: false,
+          hasRotatingPoint: false,
+          lockRotation: true,
+          stroke: 'rgba(255, 255, 255, 0.18)',
+          strokeWidth: 2,
+          strokeUniform: true,
+          padding: 6,
           ...(id && { data: { id } }),
         });
 

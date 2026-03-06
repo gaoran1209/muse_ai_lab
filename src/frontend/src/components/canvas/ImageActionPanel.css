@@ -1,0 +1,253 @@
+/* ==================== 图片 AI 生成面板（深色） ==================== */
+
+.image-action-panel {
+  position: fixed;
+  width: 288px;
+  background: rgba(20, 20, 24, 0.95);
+  backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+  animation: panelSlideIn 0.14s ease;
+}
+
+@keyframes panelSlideIn {
+  from { opacity: 0; transform: translateX(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* ==================== 头部 ==================== */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 0;
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.panel-tab {
+  padding: 5px 12px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(240, 240, 245, 0.4);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.panel-tab:hover {
+  color: rgba(240, 240, 245, 0.75);
+}
+
+.panel-tab.active {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(240, 240, 245, 0.95);
+}
+
+.panel-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(240, 240, 245, 0.3);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.panel-close:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(240, 240, 245, 0.8);
+}
+
+/* ==================== 主体 ==================== */
+
+.panel-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: 440px;
+}
+
+/* ==================== 表单字段 ==================== */
+
+.panel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel-field-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.panel-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(240, 240, 245, 0.4);
+  letter-spacing: 0.3px;
+}
+
+.panel-select,
+.panel-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(240, 240, 245, 0.85);
+  font-size: 12px;
+  transition: border-color 120ms ease;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.panel-select:focus,
+.panel-input:focus {
+  border-color: rgba(31, 113, 255, 0.5);
+  background: rgba(31, 113, 255, 0.05);
+}
+
+/* select 下拉箭头颜色 */
+.panel-select option {
+  background: #1e1e24;
+  color: rgba(240, 240, 245, 0.85);
+}
+
+.panel-textarea {
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(240, 240, 245, 0.85);
+  font-size: 12px;
+  resize: vertical;
+  line-height: 1.5;
+  font-family: inherit;
+  min-height: 68px;
+  transition: border-color 120ms ease;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.panel-textarea:focus {
+  border-color: rgba(31, 113, 255, 0.5);
+  background: rgba(31, 113, 255, 0.04);
+}
+
+.panel-textarea::placeholder {
+  color: rgba(240, 240, 245, 0.2);
+}
+
+/* ==================== 参数区 ==================== */
+
+.panel-params-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+}
+
+.panel-params-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(240, 240, 245, 0.25);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+/* ==================== 状态提示 ==================== */
+
+.panel-error {
+  padding: 7px 9px;
+  background: rgba(245, 74, 69, 0.1);
+  border: 1px solid rgba(245, 74, 69, 0.2);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.panel-success {
+  padding: 7px 9px;
+  background: rgba(0, 182, 40, 0.1);
+  border: 1px solid rgba(0, 182, 40, 0.2);
+  border-radius: 6px;
+  color: #4ade80;
+  font-size: 11px;
+}
+
+/* ==================== 生成按钮 ==================== */
+
+.panel-generate {
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 7px;
+  background: #1f71ff;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.panel-generate:hover:not(:disabled) {
+  background: #1a63e6;
+}
+
+.panel-generate:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.panel-generate:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.panel-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
