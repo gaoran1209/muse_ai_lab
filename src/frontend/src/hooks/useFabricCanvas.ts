@@ -258,6 +258,94 @@ export function useFabricCanvas(
     []
   );
 
+  // 添加视频到画布（简单的覆盖层实现）
+  const addVideo = useCallback(
+    (base64: string, options: { x: number; y: number } = { x: 100, y: 100 }) => {
+      const canvas = fabricCanvasRef.current;
+      if (!canvas) return;
+
+      const { x, y } = options;
+
+      // 创建 video 元素
+      const videoElement = document.createElement('video');
+      videoElement.src = `data:video/mp4;base64,${base64}`;
+      videoElement.autoplay = true;
+      videoElement.loop = true;
+      videoElement.muted = true;
+      videoElement.playsInline = true;
+      videoElement.crossOrigin = 'anonymous';
+      videoElement.style.cssText = `
+        position: absolute;
+        max-width: 400px;
+        max-height: 400px;
+        z-index: 100;
+        border: 2px solid rgba(255, 255, 255, 0.18);
+        border-radius: 8px;
+        cursor: grab;
+        user-select: none;
+      `;
+
+      // 视频可拖拽状态
+      let isDragging = false;
+      let dragOffset = { x: 0, y: 0 };
+
+      // 计算视频位置（画布坐标到屏幕坐标）
+      let canvasX = x;
+      let canvasY = y;
+
+      const updateVideoPosition = () => {
+        const screenX = canvasX * viewportRef.current.zoom - viewportRef.current.x;
+        const screenY = canvasY * viewportRef.current.zoom - viewportRef.current.y;
+        videoElement.style.left = `${screenX}px`;
+        videoElement.style.top = `${screenY}px`;
+      };
+
+      updateVideoPosition();
+
+      // 拖拽逻辑
+      videoElement.addEventListener('mousedown', (e: MouseEvent) => {
+        isDragging = true;
+        videoElement.style.cursor = 'grabbing';
+        dragOffset.x = e.clientX - parseFloat(videoElement.style.left);
+        dragOffset.y = e.clientY - parseFloat(videoElement.style.top);
+        e.stopPropagation();
+        e.preventDefault();
+      });
+
+      const handleMouseMove = (e: MouseEvent) => {
+        if (!isDragging) return;
+        const newScreenX = e.clientX - dragOffset.x;
+        const newScreenY = e.clientY - dragOffset.y;
+        // 反向计算画布坐标
+        canvasX = (newScreenX + viewportRef.current.x) / viewportRef.current.zoom;
+        canvasY = (newScreenY + viewportRef.current.y) / viewportRef.current.zoom;
+        updateVideoPosition();
+      };
+
+      const stopDrag = () => {
+        isDragging = false;
+        videoElement.style.cursor = 'grab';
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', stopDrag);
+
+      // 添加到 canvas 父容器
+      const canvasElement = canvas.getElement();
+      const container = canvasElement.parentElement;
+      if (container) {
+        container.appendChild(videoElement);
+      }
+
+      // 监听 viewport 变化更新位置
+      const updateHandler = () => {
+        updateVideoPosition();
+      };
+      canvas.on('after:render', updateHandler);
+    },
+    []
+  );
+
   // 删除选中
   const deleteSelected = useCallback(() => {
     const canvas = fabricCanvasRef.current;
@@ -288,6 +376,7 @@ export function useFabricCanvas(
     setZoom,
     pan,
     addImage,
+    addVideo,
     addText,
     deleteSelected,
     clear,

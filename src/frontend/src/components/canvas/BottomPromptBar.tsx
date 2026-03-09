@@ -407,7 +407,6 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
                       }}
                     >
                       {shortLabel(p.vendor)}
-                      <span className="chip-option-model">{p.model.split('/').pop()}</span>
                     </button>
                   ))}
                 </div>

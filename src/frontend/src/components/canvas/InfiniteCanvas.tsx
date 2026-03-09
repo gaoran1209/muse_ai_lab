@@ -17,14 +17,20 @@ export function InfiniteCanvas() {
   const { isPanning, setPanning, togglePanMode } = useCanvasStore();
 
   // Fabric 画布 Hook（背景设为透明，让 CSS 点阵网格透出）
-  const { canvas, viewport, resize, setZoom, pan, addImage, addText, deleteSelected } =
+  const { canvas, viewport, resize, setZoom, pan, addImage, addVideo, addText, deleteSelected } =
     useFabricCanvas(canvasRef, {
       width: window.innerWidth,
       height: window.innerHeight,
       backgroundColor: '',          // 透明，CSS 背景透出
       onViewportChange: () => {},
-      onImageSelect: (info) => setSelectedImageUrl(info.dataUrl),
-      onSelectionClear: () => setSelectedImageUrl(null),
+      onImageSelect: (info) => {
+        setSelectedImageUrl(info.dataUrl);
+        setSelectedImagePos({ x: info.canvasLeft + info.canvasWidth / 2, y: info.canvasTop + info.canvasHeight / 2 });
+      },
+      onSelectionClear: () => {
+        setSelectedImageUrl(null);
+        setSelectedImagePos(null);
+      },
     });
 
   // 本地状态
@@ -32,6 +38,7 @@ export function InfiniteCanvas() {
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [selectedImagePos, setSelectedImagePos] = useState<{ x: number; y: number } | null>(null);
 
   /**
    * 点阵网格随视口平移/缩放而移动
@@ -64,20 +71,23 @@ export function InfiniteCanvas() {
   );
 
   /**
-   * 视频生成后触发下载
+   * 视频生成后添加到画布
    */
-  const handleVideoGenerated = useCallback((base64: string) => {
-    const byteChars = atob(base64);
-    const byteNums = new Uint8Array(byteChars.length);
-    for (let i = 0; i < byteChars.length; i++) byteNums[i] = byteChars.charCodeAt(i);
-    const blob = new Blob([byteNums], { type: 'video/mp4' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `generated_${Date.now()}.mp4`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, []);
+  const handleVideoGenerated = useCallback(
+    (base64: string) => {
+      // 如果有选中的图片，放在图片右侧；否则放在画布中央
+      let x, y;
+      if (selectedImagePos) {
+        x = selectedImagePos.x + 200; // 放在选中图片右侧 200 像素处
+        y = selectedImagePos.y;
+      } else {
+        x = (window.innerWidth / 2 + viewport.x) / viewport.zoom;
+        y = (window.innerHeight / 2 + viewport.y) / viewport.zoom;
+      }
+      addVideo(base64, { x, y });
+    },
+    [addVideo, viewport, selectedImagePos]
+  );
 
   /**
    * 初始化：窗口 resize 时调整画布尺寸

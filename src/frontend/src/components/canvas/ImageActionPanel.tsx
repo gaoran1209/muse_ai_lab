@@ -32,6 +32,20 @@ interface Props {
   onImageGenerated: (base64: string) => void;
 }
 
+// ==================== 工具函数 ====================
+
+function shortLabel(vendor: string): string {
+  const map: Record<string, string> = {
+    thirtytwo_nano_banana: 'Nano Banana',
+    thirtytwo_seedream: 'Seedream',
+    thirtytwo_kling: 'Kling',
+    zhipu: 'Zhipu',
+    gemini: 'Gemini',
+    thirtytwo: '302.AI',
+  };
+  return map[vendor] ?? vendor;
+}
+
 // ==================== 参数渲染 ====================
 
 function ParamField({
@@ -287,7 +301,7 @@ export function ImageActionPanel({ anchor, onClose, onImageGenerated }: Props) {
           >
             {currentProviders.map((p) => (
               <option key={p.vendor} value={p.vendor}>
-                {p.vendor}
+                {shortLabel(p.vendor)}
               </option>
             ))}
           </select>
