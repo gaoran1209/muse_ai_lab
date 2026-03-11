@@ -7,12 +7,12 @@ API 文档: https://doc.302.ai/419295548e0
 价格: 0.035 PTC/张
 
 环境变量:
-    THIRTYTWO_DOUBAO_API_KEY: 302.AI Doubao API 密钥（优先）
-    THIRTYTWO_API_KEY: 302.AI 通用 API 密钥（备选）
-    THIRTYTWO_DOUBAO_MODEL: Doubao 模型名称
+    AI302_DOUBAO_API_KEY: 302.AI Doubao API 密钥（优先）
+    AI302_API_KEY: 302.AI 通用 API 密钥（备选）
+    AI302_DOUBAO_MODEL: Doubao 模型名称
 
 示例:
-    >>> provider = ThirtyTwoSeedreamProvider()
+    >>> provider = AI302SeedreamProvider()
     >>> if provider.is_available():
     ...     # 文生图
     ...     image = provider.generate("一只可爱的猫咪")
@@ -33,7 +33,7 @@ from ..param_spec import ParamSpec
 from .base import BaseImageProvider
 
 
-class ThirtyTwoSeedreamProvider(BaseImageProvider):
+class AI302SeedreamProvider(BaseImageProvider):
     """302.AI Seedream 图片生成提供商
 
     使用 302.AI 的 Doubao Seedream 5.0 模型生成图片。
@@ -146,18 +146,18 @@ class ThirtyTwoSeedreamProvider(BaseImageProvider):
 
     def __init__(self):
         super().__init__(
-            api_key=config.THIRTYTWO_API_KEY or "",
-            model_name=config.THIRTYTWO_IMAGE_MODEL
+            api_key=config.AI302_API_KEY or "",
+            model_name=config.AI302_IMAGE_MODEL
         )
         self.api_url = self.API_URL
         self.default_model = self.model_name
 
         if self.api_key:
             self.client = True
-            logger.info(f"ThirtyTwoSeedreamProvider initialized with model: {self.default_model}")
+            logger.info(f"AI302SeedreamProvider initialized with model: {self.default_model}")
         else:
             self.client = None
-            logger.debug("ThirtyTwoSeedreamProvider not initialized - THIRTYTWO_DOUBAO_API_KEY or THIRTYTWO_API_KEY not configured")
+            logger.debug("AI302SeedreamProvider not initialized - AI302_DOUBAO_API_KEY or AI302_API_KEY not configured")
 
     def generate(
         self,
@@ -194,7 +194,7 @@ class ThirtyTwoSeedreamProvider(BaseImageProvider):
             RuntimeError: API 请求失败
 
         示例:
-            >>> provider = ThirtyTwoSeedreamProvider()
+            >>> provider = AI302SeedreamProvider()
             >>> # 文生图（默认 1:1）
             >>> image = provider.generate("一只柯基犬在草地上奔跑")
             >>> # 指定宽高比
@@ -212,7 +212,7 @@ class ThirtyTwoSeedreamProvider(BaseImageProvider):
             ... )
         """
         if not self.is_available():
-            raise ValueError("ThirtyTwoSeedreamProvider not available - check THIRTYTWO_DOUBAO_API_KEY or THIRTYTWO_API_KEY")
+            raise ValueError("AI302SeedreamProvider not available - check AI302_DOUBAO_API_KEY or AI302_API_KEY")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -326,4 +326,4 @@ class ThirtyTwoSeedreamProvider(BaseImageProvider):
 
 
 # 单例实例
-thirtytwo_seedream_provider: ThirtyTwoSeedreamProvider = ThirtyTwoSeedreamProvider()
+ai302_seedream_provider: AI302SeedreamProvider = AI302SeedreamProvider()

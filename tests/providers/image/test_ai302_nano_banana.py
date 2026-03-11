@@ -1,6 +1,6 @@
-"""ThirtyTwoNanoBananaProvider generate 函数测试
+"""AI302NanoBananaProvider generate 函数测试
 
-需要配置 THIRTYTWO_API_KEY 环境变量才能运行。
+需要配置 AI302_API_KEY 环境变量才能运行。
 """
 
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.providers.image.thirtytwo_nano_banana import ThirtyTwoNanoBananaProvider
+from src.backend.providers.image.ai302_nano_banana import AI302NanoBananaProvider
 from src.backend.logger import logger
 
 # 输出目录
@@ -31,8 +31,8 @@ def save_image(image_data: bytes, prefix: str) -> Path:
 
 
 @pytest.mark.skipif(
-    not os.getenv("THIRTYTWO_API_KEY"),
-    reason="需要配置 THIRTYTWO_API_KEY"
+    not os.getenv("AI302_API_KEY"),
+    reason="需要配置 AI302_API_KEY"
 )
 class TestThirtyTwoNanoBananaGenerate:
     """测试 generate 函数"""
@@ -40,7 +40,7 @@ class TestThirtyTwoNanoBananaGenerate:
     def test_generate_text_to_image_default_params(self):
         """测试文生图：仅使用提示词，其他参数使用默认值"""
         model_name = "google/nano-banana-2"
-        provider = ThirtyTwoNanoBananaProvider()
+        provider = AI302NanoBananaProvider()
         provider.model_name = model_name
         prompt = "一只可爱的橘猫坐在窗台上，阳光洒在它身上"
 
@@ -57,7 +57,7 @@ class TestThirtyTwoNanoBananaGenerate:
     def test_generate_with_single_image(self):
         """测试图生图：提示词 + 单张图片，其他参数使用默认值"""
         model_name = "google/nano-banana-2"
-        provider = ThirtyTwoNanoBananaProvider()
+        provider = AI302NanoBananaProvider()
         provider.model_name = model_name
         prompt = "变成卡通风格"
         images = ["https://common-oss-cdn.tiangong.tech/application-data/prod/2025-12-16/tiangong_ea8ac72e6cf142669421d85ab9bdcc9.png"]
@@ -75,7 +75,7 @@ class TestThirtyTwoNanoBananaGenerate:
     def test_generate_with_multiple_images(self):
         """测试图生图：提示词 + 多张图片，其他参数使用默认值"""
         model_name = "google/nano-banana-2"
-        provider = ThirtyTwoNanoBananaProvider()
+        provider = AI302NanoBananaProvider()
         provider.model_name = model_name
         prompt = "融合这两张图片的风格"
         images = [

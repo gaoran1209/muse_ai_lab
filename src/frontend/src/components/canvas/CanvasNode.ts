@@ -15,9 +15,12 @@ export interface CanvasNodeConfig {
 
 const NODE_SIZES: Record<CanvasNodeType, { width: number; height: number }> = {
   text: { width: 312, height: 312 },
-  image: { width: 264, height: 336 },
+  image: { width: 252, height: 336 },
   video: { width: 264, height: 336 },
 };
+
+const IMAGE_CORNER_RADIUS = 24;
+const IMAGE_TITLE_OFFSET = 34;
 
 function nodeCopy(type: CanvasNodeType) {
   if (type === 'text') {
@@ -57,8 +60,8 @@ async function buildVisualLayer(
         top: 0,
         width: size.width,
         height: size.height,
-        rx: 22,
-        ry: 22,
+        rx: IMAGE_CORNER_RADIUS,
+        ry: IMAGE_CORNER_RADIUS,
         originX: 'left',
         originY: 'top',
       });
@@ -134,17 +137,50 @@ async function buildVisualLayer(
   return objects;
 }
 
+async function resolveNodeSize(config: CanvasNodeConfig): Promise<{ width: number; height: number }> {
+  const baseSize = NODE_SIZES[config.type];
+  if (config.type !== 'image' || !config.imageUrl || config.kind === 'look-item-node') {
+    return baseSize;
+  }
+
+  try {
+    const image = await FabricImage.fromURL(config.imageUrl, {
+      ...(config.imageUrl.startsWith('data:') ? {} : { crossOrigin: 'anonymous' }),
+    });
+    const width = image.width ?? baseSize.width;
+    const height = image.height ?? baseSize.height;
+    if (width <= 0 || height <= 0) {
+      return baseSize;
+    }
+
+    const aspectRatio = width / height;
+    if (aspectRatio >= 1) {
+      return {
+        width: baseSize.height,
+        height: Math.max(180, baseSize.height / aspectRatio),
+      };
+    }
+
+    return {
+      width: Math.max(180, baseSize.height * aspectRatio),
+      height: baseSize.height,
+    };
+  } catch {
+    return baseSize;
+  }
+}
+
 export async function createCanvasNodeGroup(
   config: CanvasNodeConfig,
   left: number,
   top: number
 ): Promise<Group> {
-  const size = NODE_SIZES[config.type];
+  const size = await resolveNodeSize(config);
   const copy = nodeCopy(config.type);
 
   const title = new Textbox(config.title ?? copy.title, {
     left: 0,
-    top: -34,
+    top: -IMAGE_TITLE_OFFSET,
     width: size.width,
     fontSize: 14,
     fontFamily: 'Avenir Next, SF Pro Display, PingFang SC, sans-serif',
@@ -160,8 +196,8 @@ export async function createCanvasNodeGroup(
     top: 0,
     width: size.width,
     height: size.height,
-    rx: config.type === 'image' ? 24 : 18,
-    ry: config.type === 'image' ? 24 : 18,
+    rx: config.type === 'image' ? IMAGE_CORNER_RADIUS : 18,
+    ry: config.type === 'image' ? IMAGE_CORNER_RADIUS : 18,
     fill: config.type === 'image' ? 'rgba(255, 255, 255, 0.02)' : 'rgba(31, 31, 35, 0.96)',
     stroke: config.type === 'image' ? 'rgba(228, 230, 234, 0.72)' : 'rgba(255, 255, 255, 0.42)',
     strokeWidth: config.type === 'image' ? 2.4 : 1.4,
@@ -215,6 +251,7 @@ export async function createCanvasNodeGroup(
     prompt: config.prompt ?? '',
     imageUrl: config.imageUrl ?? null,
     statusText: config.statusText ?? null,
+    toolbarAnchorOffsetTop: config.type === 'image' ? IMAGE_TITLE_OFFSET : 0,
   });
 
   return group;

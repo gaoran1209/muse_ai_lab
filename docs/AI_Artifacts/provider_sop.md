@@ -23,7 +23,7 @@
 
 - `src/backend/providers/llm/gemini.py`
 - `src/backend/providers/llm/zhipu.py`
-- `src/backend/providers/llm/thirtytwo.py`
+- `src/backend/providers/llm/ai302.py`
 
 ### 2.2 Image
 
@@ -31,7 +31,7 @@
 
 ### 2.3 Video
 
-- `src/backend/providers/video/thirtytwo_kling.py`
+- `src/backend/providers/video/ai302_kling.py`
 
 ---
 
@@ -47,9 +47,9 @@ GEMINI_IMAGE_MODEL
 ZHIPU_API_KEY
 ZHIPU_MODEL_NAME
 
-THIRTYTWO_API_KEY
-THIRTYTWO_LLM_MODEL
-THIRTYTWO_VIDEO_MODEL
+AI302_API_KEY
+AI302_LLM_MODEL
+AI302_VIDEO_MODEL
 ```
 
 新增 Provider 时遵守：

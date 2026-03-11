@@ -11,7 +11,7 @@ API 端点: https://api.302.ai/v1/chat/completions
     - gemini-3.1-flash-lite-preview    # 多模态 LLM
 
 环境变量:
-    THIRTYTWO_API_KEY: 302.AI API 密钥
+    AI302_API_KEY: 302.AI API 密钥
 """
 
 import base64
@@ -23,7 +23,7 @@ from ..param_spec import ParamSpec
 from .base import BaseImageProvider
 
 
-class ThirtyTwoGeminiImageProvider(BaseImageProvider):
+class AI302GeminiImageProvider(BaseImageProvider):
     """302.AI Gemini 图片生成提供商
 
     通过 OpenAI 兼容的 Chat Completions API 调用 Gemini 图片生成模型。
@@ -76,7 +76,7 @@ class ThirtyTwoGeminiImageProvider(BaseImageProvider):
 
     def __init__(self):
         super().__init__(
-            api_key=config.THIRTYTWO_API_KEY or "",
+            api_key=config.AI302_API_KEY or "",
             model_name=self.DEFAULT_MODEL,
         )
 
@@ -89,13 +89,13 @@ class ThirtyTwoGeminiImageProvider(BaseImageProvider):
                     base_url=self.API_BASE_URL,
                 )
                 logger.info(
-                    "ThirtyTwoGeminiImageProvider initialized with model: %s",
+                    "AI302GeminiImageProvider initialized with model: %s",
                     self.model_name,
                 )
             except ImportError:
                 logger.debug("openai package is not installed. Run: pip install openai")
             except Exception as exc:
-                logger.debug("Failed to initialize ThirtyTwoGeminiImage client: %s", exc)
+                logger.debug("Failed to initialize 302.AI GeminiImage client: %s", exc)
                 self.client = None
 
     @staticmethod
@@ -154,7 +154,7 @@ class ThirtyTwoGeminiImageProvider(BaseImageProvider):
         """
         if not self.is_available():
             raise ValueError(
-                "ThirtyTwoGeminiImageProvider not available - check THIRTYTWO_API_KEY"
+                "AI302GeminiImageProvider not available - check AI302_API_KEY"
             )
 
         selected_model = model_name or self.model_name or self.DEFAULT_MODEL
@@ -163,7 +163,7 @@ class ThirtyTwoGeminiImageProvider(BaseImageProvider):
         full_prompt = prompt + self._build_aspect_ratio_instruction(aspect_ratio)
 
         logger.info(
-            "Generating image via 302AI Gemini with model=%s mode=%s prompt=%s",
+            "Generating image via 302.AI Gemini with model=%s mode=%s prompt=%s",
             selected_model,
             "image-to-image" if images else "text-to-image",
             prompt[:80],
@@ -181,8 +181,8 @@ class ThirtyTwoGeminiImageProvider(BaseImageProvider):
             return self._parse_image_response(response)
 
         except Exception as exc:
-            logger.error("302AI Gemini image generation failed: %s", exc)
-            raise RuntimeError(f"302AI Gemini image generation failed: {exc}") from exc
+            logger.error("302.AI Gemini image generation failed: %s", exc)
+            raise RuntimeError(f"302.AI Gemini image generation failed: {exc}") from exc
 
     def _build_messages(
         self, prompt: str, images: list[str] | None
@@ -221,7 +221,7 @@ class ThirtyTwoGeminiImageProvider(BaseImageProvider):
             3. 响应 content parts 中包含 inline_data
         """
         if not response.choices:
-            raise RuntimeError("Empty response from 302AI Gemini")
+            raise RuntimeError("Empty response from 302.AI Gemini")
 
         message = response.choices[0].message
 
@@ -248,11 +248,11 @@ class ThirtyTwoGeminiImageProvider(BaseImageProvider):
                         return self._extract_image_base64(text)
 
         raise RuntimeError(
-            "Unable to extract image from 302AI Gemini response"
+            "Unable to extract image from 302.AI Gemini response"
         )
 
 
 # 单例实例
-thirtytwo_gemini_image_provider: ThirtyTwoGeminiImageProvider = (
-    ThirtyTwoGeminiImageProvider()
+ai302_gemini_image_provider: AI302GeminiImageProvider = (
+    AI302GeminiImageProvider()
 )

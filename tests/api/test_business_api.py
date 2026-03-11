@@ -182,6 +182,27 @@ def test_full_business_flow():
     assert adopt_resp.status_code == 200
     assert adopt_resp.json()["adopted"] is True
 
+    duplicate_project_resp = client.post(f"/api/v1/projects/{project['id']}/duplicate")
+    assert duplicate_project_resp.status_code == 201
+    duplicate_project = duplicate_project_resp.json()
+    assert duplicate_project["name"].endswith("Copy")
+    assert duplicate_project["asset_count"] == len(assets)
+    assert duplicate_project["look_count"] == len(looks)
+
+    duplicate_assets_resp = client.get(f"/api/v1/projects/{duplicate_project['id']}/assets")
+    assert duplicate_assets_resp.status_code == 200
+    assert len(duplicate_assets_resp.json()) == 2
+
+    duplicate_looks_resp = client.get(f"/api/v1/projects/{duplicate_project['id']}/looks")
+    assert duplicate_looks_resp.status_code == 200
+    duplicate_looks = duplicate_looks_resp.json()
+    assert len(duplicate_looks) == 2
+    assert len(duplicate_looks[0]["items"]) == len(looks[0]["items"])
+
+    duplicate_shots_resp = client.get(f"/api/v1/projects/{duplicate_project['id']}/shots")
+    assert duplicate_shots_resp.status_code == 200
+    assert len(duplicate_shots_resp.json()) == 3
+
     content_resp = client.post(
         "/api/v1/contents",
         json={

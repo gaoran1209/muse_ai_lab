@@ -26,7 +26,7 @@ from src.backend.schemas import (
 
 DEFAULT_LLM_VENDOR = "gemini"
 DEFAULT_IMAGE_VENDOR = "gemini"
-DEFAULT_VIDEO_VENDOR = "thirtytwo_kling"
+DEFAULT_VIDEO_VENDOR = "302ai_kling"
 
 TRANSPARENT_PIXEL_DATA_URL = (
     "data:image/gif;base64,"

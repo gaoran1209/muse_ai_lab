@@ -2,18 +2,18 @@
 
 from .base import BaseImageProvider
 from .gemini import GeminiImageProvider, gemini_image_provider
-from .thirtytwo_gemini import ThirtyTwoGeminiImageProvider, thirtytwo_gemini_image_provider
-from .thirtytwo_nano_banana import ThirtyTwoNanoBananaProvider, thirtytwo_nano_banana_provider
-from .thirtytwo_seedream import ThirtyTwoSeedreamProvider, thirtytwo_seedream_provider
+from .ai302_gemini import AI302GeminiImageProvider, ai302_gemini_image_provider
+from .ai302_nano_banana import AI302NanoBananaProvider, ai302_nano_banana_provider
+from .ai302_seedream import AI302SeedreamProvider, ai302_seedream_provider
 
 __all__ = [
     "BaseImageProvider",
     "GeminiImageProvider",
     "gemini_image_provider",
-    "ThirtyTwoGeminiImageProvider",
-    "thirtytwo_gemini_image_provider",
-    "ThirtyTwoNanoBananaProvider",
-    "thirtytwo_nano_banana_provider",
-    "ThirtyTwoSeedreamProvider",
-    "thirtytwo_seedream_provider",
+    "AI302GeminiImageProvider",
+    "ai302_gemini_image_provider",
+    "AI302NanoBananaProvider",
+    "ai302_nano_banana_provider",
+    "AI302SeedreamProvider",
+    "ai302_seedream_provider",
 ]

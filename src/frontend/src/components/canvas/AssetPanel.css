@@ -3,11 +3,11 @@
   top: 82px;
   left: 16px;
   bottom: 100px;
-  width: 286px;
-  padding: 14px;
+  width: 272px;
+  padding: 13px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   border-radius: 24px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(17, 17, 21, 0.82);
@@ -47,19 +47,19 @@
 
 .asset-tabs {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   overflow-x: auto;
 }
 
 .asset-tabs button {
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 9px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
   color: rgba(214, 222, 233, 0.58);
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .asset-tabs button.is-active {
@@ -71,43 +71,80 @@
   flex: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
   overflow: auto;
   align-content: start;
 }
 
 .asset-card {
-  border-radius: 18px;
+  position: relative;
+  border-radius: 16px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.04);
   text-align: left;
 }
 
+.asset-card-wrap {
+  position: relative;
+}
+
 .asset-card img {
   width: 100%;
-  aspect-ratio: 0.82;
+  aspect-ratio: 0.76;
   object-fit: cover;
 }
 
 .asset-card span {
   display: block;
-  padding: 8px 9px;
+  padding: 7px 8px;
   color: rgba(233, 238, 246, 0.8);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.asset-card-overlay {
+  position: absolute;
+  inset: 8px 8px auto 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+
+.asset-card-wrap:hover .asset-card-overlay {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.asset-card-overlay button {
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(13, 16, 22, 0.88);
+  color: rgba(243, 246, 251, 0.92);
+  font-size: 11px;
+}
+
+.asset-card-overlay button.is-danger {
+  border-color: rgba(242, 104, 104, 0.28);
+  color: #ffb1b1;
 }
 
 .asset-empty {
   grid-column: 1 / -1;
-  min-height: 160px;
-  padding: 16px;
+  min-height: 148px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 18px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   color: rgba(202, 211, 225, 0.48);
   text-align: center;
@@ -115,18 +152,102 @@
 
 .asset-empty strong {
   color: rgba(248, 250, 253, 0.88);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .asset-empty span {
   max-width: 180px;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.45;
+}
+
+.asset-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  background: rgba(7, 9, 14, 0.58);
+  backdrop-filter: blur(10px);
+}
+
+.asset-modal {
+  width: min(520px, calc(100vw - 40px));
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(18, 20, 27, 0.96);
+  box-shadow: 0 26px 72px rgba(0, 0, 0, 0.34);
+}
+
+.asset-preview-modal {
+  width: min(720px, calc(100vw - 40px));
+}
+
+.asset-modal-header,
+.asset-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset-modal-header h3 {
+  margin: 4px 0 0;
+  color: #f8fbff;
+}
+
+.asset-modal-header button,
+.asset-modal-footer button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(239, 244, 251, 0.86);
+}
+
+.asset-modal-footer {
+  margin-top: 18px;
+}
+
+.asset-preview-image {
+  margin-top: 16px;
+  width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.asset-editor-grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.asset-editor-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(224, 231, 240, 0.84);
+  font-size: 12px;
+}
+
+.asset-editor-grid input,
+.asset-editor-grid select {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f5f8fc;
 }
 
 @media (max-width: 1280px) {
   .asset-panel {
-    width: 264px;
+    width: 252px;
   }
 }
 

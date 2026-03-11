@@ -7,11 +7,11 @@ import pytest
 
 from src.backend.providers.llm.zhipu import ZhipuProvider
 from src.backend.providers.llm.gemini import GeminiProvider
-from src.backend.providers.llm.thirtytwo import ThirtyTwoProvider
+from src.backend.providers.llm.ai302 import AI302Provider
 from src.backend.providers.image.gemini import GeminiImageProvider
-from src.backend.providers.image.thirtytwo_seedream import ThirtyTwoSeedreamProvider
-from src.backend.providers.image.thirtytwo_nano_banana import ThirtyTwoNanoBananaProvider
-from src.backend.providers.video.thirtytwo_kling import ThirtyTwoKlingProvider
+from src.backend.providers.image.ai302_seedream import AI302SeedreamProvider
+from src.backend.providers.image.ai302_nano_banana import AI302NanoBananaProvider
+from src.backend.providers.video.ai302_kling import AI302KlingProvider
 
 
 class TestLLMParamSpec:
@@ -54,14 +54,14 @@ class TestLLMParamSpec:
         thinking_param = GeminiProvider.get_param_dict()["thinking_level"]
         assert thinking_param.choices == ["minimal", "low", "medium", "high"]
 
-    def test_thirtytwo_provider_params(self):
-        """测试 ThirtyTwoProvider 参数规范"""
-        assert ThirtyTwoProvider.GENERATE_PARAMS, "ThirtyTwoProvider 应该有参数定义"
+    def test_ai302_provider_params(self):
+        """测试 AI302Provider 参数规范"""
+        assert AI302Provider.GENERATE_PARAMS, "AI302Provider 应该有参数定义"
 
-        exposed = ThirtyTwoProvider.get_exposed_params()
+        exposed = AI302Provider.get_exposed_params()
         param_names = [p.name for p in exposed]
 
-        # thirtytwo LLM 没有对外暴露的参数
+        # 302.AI LLM 没有对外暴露的参数
         assert len(exposed) == 0, f"应该有 0 个对外暴露参数，实际: {len(exposed)}"
 
         # stream 不应该对外暴露
@@ -92,11 +92,11 @@ class TestLLMParamSpec:
 class TestImageParamSpec:
     """测试 Image Provider 参数规范"""
 
-    def test_thirtytwo_seedream_params(self):
-        """测试 ThirtyTwoSeedreamProvider 参数规范"""
-        assert ThirtyTwoSeedreamProvider.GENERATE_PARAMS, "应该有参数定义"
+    def test_ai302_seedream_params(self):
+        """测试 AI302SeedreamProvider 参数规范"""
+        assert AI302SeedreamProvider.GENERATE_PARAMS, "应该有参数定义"
 
-        exposed = ThirtyTwoSeedreamProvider.get_exposed_params()
+        exposed = AI302SeedreamProvider.get_exposed_params()
         param_names = [p.name for p in exposed]
 
         # 内部参数不应对外暴露
@@ -110,7 +110,7 @@ class TestImageParamSpec:
         assert "aspect_ratio" in param_names
 
         # 验证 aspect_ratio 的可选值
-        aspect_ratio_param = ThirtyTwoSeedreamProvider.get_param_dict()["aspect_ratio"]
+        aspect_ratio_param = AI302SeedreamProvider.get_param_dict()["aspect_ratio"]
         assert "1:1" in aspect_ratio_param.choices
         assert "16:9" in aspect_ratio_param.choices
 
@@ -136,11 +136,11 @@ class TestImageParamSpec:
             "imagen-4.0-ultra-generate-001",
         ]
 
-    def test_thirtytwo_nano_banana_params(self):
-        """测试 ThirtyTwoNanoBananaProvider 参数规范"""
-        assert ThirtyTwoNanoBananaProvider.GENERATE_PARAMS, "应该有参数定义"
+    def test_ai302_nano_banana_params(self):
+        """测试 AI302NanoBananaProvider 参数规范"""
+        assert AI302NanoBananaProvider.GENERATE_PARAMS, "应该有参数定义"
 
-        exposed = ThirtyTwoNanoBananaProvider.get_exposed_params()
+        exposed = AI302NanoBananaProvider.get_exposed_params()
         param_names = [p.name for p in exposed]
 
         # 内部参数不应对外暴露
@@ -156,11 +156,11 @@ class TestImageParamSpec:
 class TestVideoParamSpec:
     """测试 Video Provider 参数规范"""
 
-    def test_thirtytwo_kling_params(self):
-        """测试 ThirtyTwoKlingProvider 参数规范"""
-        assert ThirtyTwoKlingProvider.GENERATE_PARAMS, "应该有参数定义"
+    def test_ai302_kling_params(self):
+        """测试 AI302KlingProvider 参数规范"""
+        assert AI302KlingProvider.GENERATE_PARAMS, "应该有参数定义"
 
-        exposed = ThirtyTwoKlingProvider.get_exposed_params()
+        exposed = AI302KlingProvider.get_exposed_params()
         param_names = [p.name for p in exposed]
 
         # 内部参数不应对外暴露
@@ -174,11 +174,11 @@ class TestVideoParamSpec:
         assert "duration" in param_names
 
         # 验证 duration 的可选值
-        duration_param = ThirtyTwoKlingProvider.get_param_dict()["duration"]
+        duration_param = AI302KlingProvider.get_param_dict()["duration"]
         assert duration_param.choices == [5, 10]
 
         # 验证 mode 的可选值
-        mode_param = ThirtyTwoKlingProvider.get_param_dict()["mode"]
+        mode_param = AI302KlingProvider.get_param_dict()["mode"]
         assert mode_param.choices == ["std", "pro"]
 
 

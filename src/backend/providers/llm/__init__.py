@@ -33,13 +33,13 @@ LLM Provider 模块
     ├── base.py         # BaseLLMProvider 抽象基类
     ├── zhipu.py        # ZhipuProvider 实现
     ├── gemini.py       # GeminiProvider 实现
-    └── thirtytwo.py    # ThirtyTwoProvider 实现（默认）
+    └── ai302.py        # AI302Provider 实现（默认）
 """
 
 from .base import BaseLLMProvider
 from .zhipu import ZhipuProvider, zhipu_provider
 from .gemini import GeminiProvider, gemini_provider
-from .thirtytwo import ThirtyTwoProvider, thirtytwo_provider
+from .ai302 import AI302Provider, ai302_provider
 
 __all__ = [
     # 抽象基类
@@ -51,6 +51,6 @@ __all__ = [
     "GeminiProvider",
     "gemini_provider",
     # 302.AI
-    "ThirtyTwoProvider",
-    "thirtytwo_provider",
+    "AI302Provider",
+    "ai302_provider",
 ]

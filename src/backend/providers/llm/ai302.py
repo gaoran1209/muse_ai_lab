@@ -18,7 +18,7 @@ from ..param_spec import ParamSpec
 from .base import BaseLLMProvider
 
 
-class ThirtyTwoProvider(BaseLLMProvider):
+class AI302Provider(BaseLLMProvider):
     """302.AI LLM 提供商
 
     302.AI 是一个 AI 模型聚合平台，提供 OpenAI 兼容格式的统一 API。
@@ -30,11 +30,11 @@ class ThirtyTwoProvider(BaseLLMProvider):
         - 自动错误处理和日志记录
 
     环境变量:
-        THIRTYTWO_API_KEY: 302.AI API 密钥（必需）
-        THIRTYTWO_MODEL_NAME: 模型名称（默认: gemini-2.5-flash）
+        AI302_API_KEY: 302.AI API 密钥（必需）
+        AI302_LLM_MODEL: 模型名称（默认: gemini-2.5-flash）
 
     示例:
-        >>> provider = ThirtyTwoProvider()
+        >>> provider = AI302Provider()
         >>> if provider.is_available():
         ...     response = provider.generate("用一句话解释量子计算")
     """
@@ -71,7 +71,7 @@ class ThirtyTwoProvider(BaseLLMProvider):
     )
 
     def __init__(self):
-        super().__init__(config.THIRTYTWO_API_KEY, config.THIRTYTWO_LLM_MODEL)
+        super().__init__(config.AI302_API_KEY, config.AI302_LLM_MODEL)
 
         if self.api_key:
             try:
@@ -80,11 +80,11 @@ class ThirtyTwoProvider(BaseLLMProvider):
                     api_key=self.api_key,
                     base_url="https://api.302.ai/v1"
                 )
-                logger.info(f"ThirtyTwoProvider initialized with model: {self.model_name}")
+                logger.info(f"AI302Provider initialized with model: {self.model_name}")
             except ImportError:
                 logger.debug("openai package is not installed. Run: pip install openai")
             except Exception as e:
-                logger.debug(f"Failed to initialize ThirtyTwo client: {e}")
+                logger.debug(f"Failed to initialize 302.AI client: {e}")
                 self.client = None
 
     def generate(
@@ -106,7 +106,7 @@ class ThirtyTwoProvider(BaseLLMProvider):
             str: 生成的文本内容，如果出错则返回错误信息字符串
         """
         if not self.client:
-            logger.warning("ThirtyTwoProvider client not available - check THIRTYTWO_API_KEY configuration")
+            logger.warning("AI302Provider client not available - check AI302_API_KEY configuration")
             return "Error: LLM configuration missing."
 
         try:
@@ -135,7 +135,7 @@ class ThirtyTwoProvider(BaseLLMProvider):
                     logger.info(f"Response: {content[:200]}...")
                     return content if content else ""
                 else:
-                    logger.warning("Empty response from ThirtyTwo.AI")
+                    logger.warning("Empty response from 302.AI")
                     return ""
 
         except Exception as e:
@@ -144,4 +144,4 @@ class ThirtyTwoProvider(BaseLLMProvider):
 
 
 # 单例实例
-thirtytwo_provider: ThirtyTwoProvider = ThirtyTwoProvider()
+ai302_provider: AI302Provider = AI302Provider()

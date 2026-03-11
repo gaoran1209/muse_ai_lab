@@ -1,19 +1,20 @@
-# Muse AI Studio
+# MUSE AI Lab
 
-AI-powered creative studio for generating fashion outfits, canvas art, and multimedia content.
+面向时尚行业的 **AI 内容创作与验证平台**：创作者通过 AI 快速生成搭配内容（Muse Spark），达人通过互动和试穿验证内容价值（Muse Land），互动数据实时回流驱动下一轮创作。
 
 > **当前状态**:
-> - 后端: 多厂商 AI 提供商封装完成
-> - 前端: 无限画布 MVP 已实现（React + Fabric.js）
+> - 后端: 多厂商 AI 提供商封装完成，统一的调度层与 API 暴露设计实现
+> - 前端: 包含双端（Muse Spark 工作台 + Muse Land 内容消费端）的基础交互架构已搭建阶段（React + Fabric.js + Zustand）
 
-### 画布页面预览
+### 两大核心模块
 
-![Canvas 页面示例](public/example.png)
+- **Muse Spark (创作者工作台)**：给内容创作者使用，支持导入素材、AI 智能搭配补全与分组、虚拟拍摄节点流（换模特/换背景等）、内容采纳与发布。
+- **Muse Land (内容消费端)**：给达人/KOL使用，沉浸式互动 Feed 流浏览、查看 Look 单品详情、图文 TryOn 虚拟试穿、表达消费偏好（点赞/收藏）。
 
 ## Project Structure
 
-```
-muse_studio/
+```text
+muse_ai_lab/
 ├── .env                          # API Keys、配置
 ├── .env.example                  # 配置示例文件
 ├── .gitignore                    # Git 忽略规则
@@ -23,9 +24,7 @@ muse_studio/
 ├── pnpm-lock.yaml                # 前端依赖锁文件
 ├── docs/                         # 文档目录
 │   ├── PRD/                      # 产品需求文档
-│   └── AI_PRD/                   # AI 实现指南
-│       ├── architecture.md       # 架构设计文档
-│       └── provider_sop.md       # 模型/供应商添加标准操作流程
+│   └── AI_Artifacts/             # AI 开发辅助与参考文档（如架构、SOP等）
 ├── logs/                         # 日志输出目录
 ├── scripts/                      # 项目运行与运维脚本
 │   ├── setup.sh                  # 初始化环境脚本
@@ -56,20 +55,8 @@ muse_studio/
 │   │   └── providers/            # 外部 API 封装层
 │   │       ├── param_spec.py     # 参数元数据定义（ParamSpec 数据类）
 │   │       ├── llm/              # LLM 提供商
-│   │       │   ├── __init__.py   # 模块导出
-│   │       │   ├── base.py       # BaseLLMProvider 抽象基类
-│   │       │   ├── zhipu.py      # 智谱 AI 实现
-│   │       │   ├── gemini.py     # Google Gemini 实现
-│   │       │   └── thirtytwo.py  # 302.AI 模型聚合平台实现
 │   │       ├── image/            # 图像生成提供商
-│   │       │   ├── __init__.py   # 模块导出
-│   │       │   ├── base.py       # BaseImageProvider 抽象基类
-│   │       │   ├── thirtytwo_nano_banana.py  # 302.AI Nano Banana 模型
-│   │       │   └── thirtytwo_seedream.py     # 302.AI Seedream 模型
 │   │       └── video/            # 视频生成提供商
-│   │           ├── __init__.py   # 模块导出
-│   │           ├── base.py       # BaseVideoProvider 抽象基类
-│   │           └── thirtytwo_kling.py  # 302.AI Kling 视频生成实现
 │   └── frontend/                 # 前端代码（React/TypeScript）
 │       ├── index.html            # HTML 入口
 │       ├── vite.config.ts        # Vite 配置
@@ -80,35 +67,14 @@ muse_studio/
 │           ├── App.css           # 全局样式
 │           ├── types.ts          # 类型定义 + 常量
 │           ├── store.ts          # Zustand 状态管理
-│           ├── pages/            # 页面组件
-│           │   ├── Home.tsx      # 首页
-│           │   └── Canvas.tsx    # 画布页面
+│           ├── pages/            # 页面组件 (Dashboard, Canvas, Land 等)
 │           ├── components/       # 通用组件
-│           │   ├── CanvasEditor.tsx    # 画布编辑器入口
-│           │   └── canvas/             # 画布相关组件
-│           │       ├── InfiniteCanvas.tsx  # 无限画布核心组件
-│           │       ├── InfiniteCanvas.css  # 画布样式（深色主题 + 点阵网格）
-│           │       ├── BottomPromptBar.tsx # 底部生成面板（图片/视频 + 厂商 + 参数 chips）
-│           │       └── BottomPromptBar.css # 底部面板样式（毛玻璃风格）
 │           └── hooks/            # 自定义 Hooks
-│               └── useFabricCanvas.ts  # Fabric.js 封装
 └── tests/                        # 测试目录
     ├── conftest.py               # Pytest 配置
     ├── api/                      # API 测试
-    │   └── test_router.py        # API 路由测试
     ├── services/                 # 服务层测试
-    │   └── test_provider_service.py  # Provider 服务层测试
     └── providers/                # Provider 单元测试
-        ├── test_param_spec.py    # 参数元数据测试
-        ├── llm/                  # LLM 提供商测试
-        │   ├── test_zhipu.py     # 智谱 AI 测试
-        │   ├── test_gemini.py    # Gemini 测试
-        │   └── test_thirtytwo.py # 302.AI 测试
-        ├── image/                # 图像提供商测试
-        │   ├── test_thirtytwo_nano_banana.py  # Nano Banana 测试
-        │   └── test_thirtytwo_seedream.py     # Seedream 测试
-        └── video/                # 视频提供商测试
-            └── test_thirtytwo_kling.py  # Kling 视频测试
 ```
 
 ---
@@ -121,20 +87,20 @@ muse_studio/
 |------|------|------|----------|----------|
 | 智谱 AI | `ZhipuProvider` | ✅ | `thinking_enabled` | `glm-4.7-flash` |
 | Google Gemini | `GeminiProvider` | ✅ | `thinking_level` | `gemini-2.5-flash` |
-| 302.AI | `ThirtyTwoProvider` | ✅ | 无 | `gemini-2.5-flash` |
+| 302.AI | `AI302Provider` | ✅ | 无 | `gemini-2.5-flash` |
 
 ### 图像生成提供商
 
 | 厂商 | 类名 | 状态 | 暴露参数 | 推荐模型 |
 |------|------|------|----------|----------|
-| 302.AI Nano Banana | `ThirtyTwoNanoBananaProvider` | ✅ | `images`, `resolution`, `aspect_ratio` | `google/nano-banana-2` |
-| 302.AI Seedream | `ThirtyTwoSeedreamProvider` | ✅ | `image`, `aspect_ratio` | `doubao-seedream-5-0-260128` |
+| 302.AI Nano Banana | `AI302NanoBananaProvider` | ✅ | `images`, `resolution`, `aspect_ratio` | `google/nano-banana-2` |
+| 302.AI Seedream | `AI302SeedreamProvider` | ✅ | `image`, `aspect_ratio` | `doubao-seedream-5-0-260128` |
 
 ### 视频生成提供商
 
 | 厂商 | 类名 | 状态 | 暴露参数 | 推荐模型 |
 |------|------|------|----------|----------|
-| 302.AI Kling | `ThirtyTwoKlingProvider` | ✅ | `images`, `model_name`, `mode`, `aspect_ratio`, `duration` | `kling-v2-5-turbo` |
+| 302.AI Kling | `AI302KlingProvider` | ✅ | `images`, `model_name`, `mode`, `aspect_ratio`, `duration` | `kling-v2-5-turbo` |
 
 ---
 
@@ -142,10 +108,10 @@ muse_studio/
 
 ### 架构分层
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    FastAPI Routes                        │
-│         /api/v1/{llm,image,video}              │
+│         /api/v1/{llm,image,video,providers}              │
 └──────────────────────┬──────────────────────────────────┘
                        │
 ┌──────────────────────▼──────────────────────────────────┐
@@ -162,102 +128,6 @@ muse_studio/
 │                 External AI Services                     │
 │      Zhipu | Gemini | 302.AI | Kling | ...              │
 └─────────────────────────────────────────────────────────┘
-```
-
-### API 端点
-
-#### LLM 服务
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| POST | `/api/v1/llm/generate` | 生成文本 |
-| GET | `/api/v1/llm/providers` | 获取所有 LLM Provider |
-
-**LLM 暴露参数：**
-
-| 厂商 | 暴露参数 |
-|------|----------|
-| zhipu | `thinking_enabled` (bool) |
-| gemini | `thinking_level` (str, choices: minimal/low/medium/high) |
-| thirtytwo | 无暴露参数 |
-
-**请求示例：**
-```json
-POST /api/v1/llm/generate
-{
-  "vendor": "zhipu",
-  "prompt": "请写一首关于春天的诗",
-  "parameters": {
-    "thinking_enabled": true
-  }
-}
-```
-
-#### Image 服务
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| POST | `/api/v1/image/generate` | 生成图片 |
-| GET | `/api/v1/image/providers` | 获取所有 Image Provider |
-
-**Image 暴露参数：**
-
-| 厂商 | 暴露参数 |
-|------|----------|
-| thirtytwo_nano_banana | `images` (list), `resolution` (1k/2k/4k), `aspect_ratio` (str) |
-| thirtytwo_seedream | `image` (str\|list[str]), `aspect_ratio` (1:1/4:3/3:4/16:9/9:16/3:2/2:3/21:9) |
-
-**请求示例：**
-```json
-POST /api/v1/image/generate
-{
-  "vendor": "thirtytwo_nano_banana",
-  "prompt": "一只可爱的橘猫",
-  "parameters": {
-    "resolution": "2k",
-    "aspect_ratio": "16:9"
-  }
-}
-```
-
-#### Video 服务
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| POST | `/api/v1/video/generate` | 生成视频 |
-| GET | `/api/v1/video/providers` | 获取所有 Video Provider |
-
-**Video 暴露参数：**
-
-| 厂商 | 暴露参数 |
-|------|----------|
-| thirtytwo_kling | `images` (str\|list[str]), `model_name` (str), `mode` (std/pro), `aspect_ratio` (16:9/9:16/1:1), `duration` (5/10) |
-
-**请求示例：**
-```json
-POST /api/v1/video/generate
-{
-  "vendor": "thirtytwo_kling",
-  "prompt": "让画面中的云朵缓缓移动",
-  "parameters": {
-    "aspect_ratio": "16:9",
-    "duration": 5
-  }
-}
-```
-
-#### 统一端点
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/v1/providers` | 获取所有 Provider（含暴露参数） |
-| GET | `/health` | 健康检查 |
-
-**获取暴露参数示例：**
-```bash
-GET /api/v1/providers
-
-# 响应包含 info.exposed_params 字段，列出该 Provider 允许通过 API 传入的参数
 ```
 
 ### 启动服务
@@ -282,21 +152,31 @@ open http://localhost:8000/docs
 
 ---
 
-## 前端功能
+## 前端功能 (MUSE AI Lab Demo v0.6)
 
-### 无限画布（深色节点编辑器风格）
+### Muse Spark: 创作者工作台
 
 **UI 风格**：深色背景（`#111113`）+ 动态点阵网格，毛玻璃面板
 
-- **左侧工具栏**: 文字、上传图片、平移（手型图标）、缩放 +/-
-- **底部生成面板**: 图片/视频模式切换、厂商选择、参数 chips、⌘+Enter 快捷生成
-- **图片边框**: 上传/生成的图片带半透明白色边框，最大 280px，无旋转/缩放控制手柄
-- **平移模式**: 空格键或侧边栏按钮切换
-- **缩放**: 鼠标滚轮缩放（以鼠标位置为中心）
-- **元素操作**: 选择、拖拽、删除（Delete/Backspace）
-- **文字编辑**: 双击文字进入编辑模式
-- **图片上传**: 侧边栏按钮或拖拽到画布
-- **AI 生成**: 后端暴露参数自动渲染为 chips（下拉/开关/输入框），支持多厂商切换
+- **素材库**：左侧面板支持展开/折叠。全区支持图片拖拽上传。上传后，后台将自动打标品类、风格等标签。
+- **画布底层管控**：基于 Fabric.js 设计，允许鼠标拖拽平移，滚轮缩放范围控制在 50%～200%。
+- **三类标准对象节点**：
+  - **Text（文本）**：承载单一文本。
+  - **Image（图像）**：包括素材图与 AI 渲染图，支持直接从素材库拖入。选中后可输入提示词直接触发生成。
+  - **Video（视频）**：承载成片视频，结构上与 Image 统一。
+- **AI 智能搭配逻辑**：
+  - 选中 1~2 件单品触发「搭配补全」；选中 3 件以上单品触发「搭配分组」。
+  - 在画布上自动生成 **Look / Board** 大分组视窗，包含推荐的搭配单品图组合，可整体拖拽移动与移除。
+- **快捷虚拟拍摄节点流 (基于裂变)**：
+  - 选中 Look 组，触发拍摄弹出 `[换模特]`、`[换背景]`、`[TryOn]` 或 `[自定义指令]`。自动裂变衍生出子节点构成连线控制图产生最终成果物。
+- **结果面板与一键分发**：
+  - 用户可对满意的节点结果点击「✅ 采纳」。选出多张优质设计存入右侧藏宝箱面板，接着点击「发布到 Muse Land」一键流转到内容场。
+
+### Muse Land: 消费者 / 达人沉浸场
+
+- **沉浸式 Feed 浏览**：达人用户进入 Land 后，默认按倒序或风格查看最新的穿搭种草内容。
+- **达人 TryOn 体验**：点击「TryOn Me」可快速上传人像自拍图，联动试穿模型（VTON）将虚拟服饰效果覆盖成达人自我的实际上身效果供评估。
+- **正反馈循环**：系统收集点赞、收藏互动记录，反推给 Muse Spark 做为下一轮 AI 供稿设计的个性化权重辅助数据。
 
 ### 技术栈
 
@@ -316,7 +196,7 @@ open http://localhost:8000/docs
 ### 1. 环境构建
 
 ```bash
-./scripts/setup.sh    # 创建虚拟环境并安装依赖
+./scripts/setup.sh    # 创建虚拟环境并安装前端、后端依赖
 ```
 
 ### 2. 配置环境变量
@@ -343,20 +223,14 @@ cp .env.example .env
 ### 4. 启动服务
 
 ```bash
-# 启动前端 + 后端
 ./scripts/restart.sh
-
-# 仅启动后端
-./scripts/restart.sh backend
-
-# 仅启动前端
-./scripts/restart.sh frontend
 ```
 
 访问地址:
-- API 文档: http://localhost:8000/docs
-- 首页: http://localhost:5173/
-- 画布页: http://localhost:5173/canvas
+- 首页 (Muse Spark Dashboard): http://localhost:5173/
+- 画布创作空间 (Muse Spark Canvas): http://localhost:5173/canvas/:projectId
+- 达人浏览街区 (Muse Land Feed): http://localhost:5173/land
+- 接口文档: http://localhost:8000/docs
 
 ### 5. 构建前端
 
@@ -367,60 +241,32 @@ pnpm run preview        # 预览生产构建
 
 ---
 
-## 开发规范
+## 开发与协作规范 (Agent Development Rules)
 
-### 添加新供应商
+### 1. 技术栈与边界约束 (Architecture)
+- **前后端架构边界**: 前端以纯视图为主，尽量依赖后端暴露业务抽象层（保持 Zustand Store 分区和 Backend Service 独立映射稳定）。
+- **Provider 层独立**: Provider 层只承担对外大模型及服务的调用，严禁混入任何产品逻辑或业务编排代码。
+- **数据库设计**: 采用零配置的 SQLite (`data/muse.db`) 结合 SQLAlchemy，由 8 个核心大表撑起整个生命周期业务闭环（Project, Asset, Look, LookItem, Shot, Content, Interaction, TryOnTask）。
 
-添加新的 AI 模型/供应商请遵循 `docs/AI_PRD/provider_sop.md` 中的标准流程：
+### 2. 多 Agent 并行协作策略 (Agent Plan)
+为保障并发工程的稳定性，本系统应用多 AI Agent 拆分方案，严格划定责任防止代码冲突破坏：
+- **Agent 0 (Data Foundation)**: 提供系统地基。负责全局后端的 ORM 数据引擎表结构创建，并一次性敲定前台 `types.ts` 和基于 `store.ts` 的结构注视分区骨架建设。
+- **Agent A (全部后端)**: 逻辑建设主脑。接管所有的业务 API 接口层代码开发（提供出 `/api/v1/` 底下全部业务）处理生成排队状态与协同业务 Service 逻辑分配。
+- **Agent B (Spark 前端)**: 对抗核心交互体验。独占并负责创作者侧复杂工作台功能开发及画布组件渲染（依赖 `VITE_USE_MOCK=true` 与真实数据）。
+- **Agent C (Land 前端)**: 闭环体验层。负责消费互动侧瀑布流。
+- *隔离协议：`App.tsx` 的路由注册权归 Agent B，而各部分状态只写入基于 `store.ts` 内划定好的专属注释区段。*
 
-1. 创建 Provider 文件：`src/backend/providers/<type>/<vendor>.py`
-2. 更新模块导出：`__init__.py`
-3. 添加配置项：`config.py` + `.env.example`
-4. 定义参数元数据：`GENERATE_PARAMS` 类属性（使用 `ParamSpec`）
-5. 创建测试：`tests/providers/<type>/test_<vendor>.py`
-6. 运行测试验证：`./scripts/test.sh`
+### 3. 添加新供应商 (Provider SOP)
 
-### 参数元数据系统
+参考 `docs/AI_Artifacts/provider_sop.md`。
 
-每个 Provider 通过 `GENERATE_PARAMS` 定义参数规范：
+1. 当需要在系统扩展 LLM、图生平台时，前往 `src/backend/providers/<type>/<vendor>.py` 创建对应提供商的具体实现。
+2. 内部必须继承基类并定义 `GENERATE_PARAMS` 来获得系统的参数拦截与过滤分配，且切忌在路由层随意硬编码。
+3. ENV 环境与常量配置遵守 `<VENDOR>_API_KEY` 模型名称等约定，不要凭空发明前缀。
+4. 提供覆盖完备的初始化、API 请求和 ParamSpec 的测试验证于 `tests/providers/<type>/test_<vendor>.py`。
 
-```python
-from ..param_spec import ParamSpec
-
-class CustomProvider(BaseLLMProvider):
-    GENERATE_PARAMS = (
-        ParamSpec(
-            name="temperature",
-            type=float,
-            exposed=True,          # 是否对外暴露（API 可传入）
-            default=1.0,
-            description="控制输出的随机性",
-            choices=None,
-            required=False,
-        ),
-        # ...
-    )
-```
-
-**参数过滤机制：**
-- 只有 `exposed=True` 的参数才能通过 API 传入
-- 服务层会自动过滤未暴露的参数
-- 前端可通过 `/api/v1/providers` 获取暴露参数列表
-
-获取对外暴露的参数：
-```python
-exposed_params = CustomProvider.get_exposed_params()
-provider_info = CustomProvider.get_provider_info()
-```
-
-### 通用规范
-
-- **代码风格**: 遵循 PEP 8
-- **提交规范**: 使用 Conventional Commits（feat/fix/refactor/docs/test）
-- **测试覆盖**: 新增代码必须添加测试，核心路径 80%+ 覆盖率
-- **日志输出**: 所有日志输出到 `logs/` 目录
-- **前端架构**: 扁平化优先，避免过度抽象，使用相对导入
-- **文档**: 代码变更同步更新 README
+### 4. 冲突解决基准
+发现矛盾和未决事物时执行此同步顺序：`产品目标规则以 PRD ＞ 数据和接口协议以 tech_requirement.md ＞ 任何修补必须首先反映在说明书（Docs）中再改代码。`
 
 ## License
 

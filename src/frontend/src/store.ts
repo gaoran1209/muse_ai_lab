@@ -13,11 +13,16 @@ import {
   adoptShot,
   createAsset,
   createProject,
+  deleteAsset,
+  deleteProject,
+  duplicateProject,
   fetchProjects,
   fetchWorkspace,
   generateLooks,
   generateShot,
   publishContent,
+  updateAsset,
+  updateLook,
   updateProject,
 } from './lib/sparkApi';
 import type {
@@ -139,10 +144,14 @@ interface SparkStore {
   error: string | null;
   loadProjects: () => Promise<void>;
   createProjectAndOpen: (name?: string) => Promise<ProjectDetail>;
+  duplicateProjectAndOpen: (projectId: string) => Promise<ProjectDetail>;
+  deleteProjectById: (projectId: string) => Promise<void>;
   renameProject: (projectId: string, name: string) => Promise<ProjectDetail>;
   loadWorkspace: (projectId: string) => Promise<void>;
   setActiveCategory: (category: 'all' | Asset['category']) => void;
   uploadAssetFiles: (projectId: string, files: File[], category: Asset['category']) => Promise<void>;
+  updateAssetMeta: (assetId: string, payload: { category?: Asset['category']; tags?: Asset['tags'] }) => Promise<Asset>;
+  deleteAssetById: (assetId: string) => Promise<void>;
   upsertLook: (look: Look) => void;
   upsertShot: (shot: Shot) => void;
   generateLooksForAssets: (
@@ -165,6 +174,7 @@ interface SparkStore {
   togglePublishShotSelection: (shotId: string) => void;
   clearPublishSelection: () => void;
   setShotAdopted: (projectId: string, shotId: string, adopted: boolean) => Promise<void>;
+  replaceLookItemAsset: (lookId: string, itemId: string, assetId: string) => Promise<Look>;
   publishSelectedShots: (
     projectId: string,
     lookId: string,
@@ -233,6 +243,39 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
     }
   },
 
+  duplicateProjectAndOpen: async (projectId) => {
+    set({ busy: true, error: null });
+    try {
+      const project = await duplicateProject(projectId);
+      set((state) => ({
+        busy: false,
+        activeProject: project,
+        projects: sortProjectsByUpdatedAt([project, ...state.projects]),
+      }));
+      return project;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '复制方案失败';
+      set({ busy: false, error: message });
+      throw error;
+    }
+  },
+
+  deleteProjectById: async (projectId) => {
+    set({ busy: true, error: null });
+    try {
+      await deleteProject(projectId);
+      set((state) => ({
+        busy: false,
+        projects: state.projects.filter((project) => project.id !== projectId),
+        activeProject: state.activeProject?.id === projectId ? null : state.activeProject,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除方案失败';
+      set({ busy: false, error: message });
+      throw error;
+    }
+  },
+
   renameProject: async (projectId, name) => {
     set({ busy: true, error: null });
     try {
@@ -292,6 +335,43 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
     }
   },
 
+  updateAssetMeta: async (assetId, payload) => {
+    set({ busy: true, error: null });
+    try {
+      const asset = await updateAsset(assetId, payload);
+      set((state) => ({
+        busy: false,
+        assets: state.assets.map((item) => (item.id === assetId ? asset : item)),
+      }));
+      return asset;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '素材更新失败';
+      set({ busy: false, error: message });
+      throw error;
+    }
+  },
+
+  deleteAssetById: async (assetId) => {
+    set({ busy: true, error: null });
+    try {
+      await deleteAsset(assetId);
+      set((state) => ({
+        busy: false,
+        assets: state.assets.filter((asset) => asset.id !== assetId),
+        activeProject: state.activeProject
+          ? {
+              ...state.activeProject,
+              asset_count: Math.max(0, state.activeProject.asset_count - 1),
+            }
+          : state.activeProject,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除素材失败';
+      set({ busy: false, error: message });
+      throw error;
+    }
+  },
+
   upsertLook: (look) => set((state) => ({ looks: upsertById(state.looks, look) })),
 
   upsertShot: (shot) => set((state) => ({ shots: upsertById(state.shots, shot) })),
@@ -348,6 +428,46 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
       }));
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '采纳状态更新失败' });
+    }
+  },
+
+  replaceLookItemAsset: async (lookId, itemId, assetId) => {
+    const look = get().looks.find((item) => item.id === lookId);
+    const asset = get().assets.find((item) => item.id === assetId);
+    if (!look || !asset) {
+      throw new Error('Look 或素材不存在');
+    }
+
+    const nextItems = look.items.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            asset_id: asset.id,
+            asset_url: asset.url,
+            category: asset.tags?.subcategory ?? asset.category,
+            placeholder_desc: null,
+          }
+        : item
+    );
+
+    set({ busy: true, error: null });
+    try {
+      const updatedLook = await updateLook(lookId, {
+        name: look.name,
+        description: look.description,
+        styleTags: look.style_tags,
+        boardPosition: look.board_position,
+        items: nextItems,
+      });
+      set((state) => ({
+        busy: false,
+        looks: state.looks.map((item) => (item.id === lookId ? updatedLook : item)),
+      }));
+      return updatedLook;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '替换搭配单品失败';
+      set({ busy: false, error: message });
+      throw error;
     }
   },
 

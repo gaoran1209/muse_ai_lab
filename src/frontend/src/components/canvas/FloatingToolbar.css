@@ -1,6 +1,6 @@
 .floating-toolbar {
   position: absolute;
-  transform: translate(-50%, calc(-100% - 18px));
+  transform: translate(-50%, calc(-100% - 8px));
   display: inline-flex;
   align-items: center;
   gap: 6px;

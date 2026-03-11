@@ -11,12 +11,12 @@ API 文档:
     分辨率4K 0.16 PTC/次
 
 环境变量:
-    THIRTYTWO_GEMINI_IMAGE_API_KEY: 302.AI Gemini 图片 API 密钥（优先）
-    THIRTYTWO_API_KEY: 302.AI 通用 API 密钥（备选）
-    THIRTYTWO_IMAGE_MODEL: 图片生成模型名称
+    AI302_GEMINI_IMAGE_API_KEY: 302.AI Gemini 图片 API 密钥（优先）
+    AI302_API_KEY: 302.AI 通用 API 密钥（备选）
+    AI302_IMAGE_MODEL: 图片生成模型名称
 
 示例:
-    >>> provider = ThirtyTwoNanoBananaProvider()
+    >>> provider = AI302NanoBananaProvider()
     >>> if provider.is_available():
     ...     # 文生图
     ...     image = provider.generate("一只可爱的猫咪")
@@ -32,7 +32,7 @@ from ..param_spec import ParamSpec
 from .base import BaseImageProvider
 
 
-class ThirtyTwoNanoBananaProvider(BaseImageProvider):
+class AI302NanoBananaProvider(BaseImageProvider):
     """302.AI Nano-Banana 图片生成提供商
 
     使用 302.AI 的图片生成模型生成图片。
@@ -117,8 +117,8 @@ class ThirtyTwoNanoBananaProvider(BaseImageProvider):
 
     def __init__(self):
         super().__init__(
-            api_key=config.THIRTYTWO_API_KEY or "",
-            model_name=config.THIRTYTWO_IMAGE_MODEL
+            api_key=config.AI302_API_KEY or "",
+            model_name=config.AI302_IMAGE_MODEL
         )
         self.api_base_text_to_image = self.API_BASE_TEXT_TO_IMAGE
         self.api_base_image_to_image = self.API_BASE_IMAGE_TO_IMAGE
@@ -126,10 +126,10 @@ class ThirtyTwoNanoBananaProvider(BaseImageProvider):
 
         if self.api_key:
             self.client = True
-            logger.info(f"ThirtyTwoNanoBananaProvider initialized with model: {self.model_name}")
+            logger.info(f"AI302NanoBananaProvider initialized with model: {self.model_name}")
         else:
             self.client = None
-            logger.debug("ThirtyTwoNanoBananaProvider not initialized - THIRTYTWO_GEMINI_IMAGE_API_KEY or THIRTYTWO_API_KEY not configured")
+            logger.debug("AI302NanoBananaProvider not initialized - AI302_GEMINI_IMAGE_API_KEY or AI302_API_KEY not configured")
 
     def generate(
         self,
@@ -161,7 +161,7 @@ class ThirtyTwoNanoBananaProvider(BaseImageProvider):
             RuntimeError: API 请求失败
 
         示例:
-            >>> provider = ThirtyTwoNanoBananaProvider()
+            >>> provider = AI302NanoBananaProvider()
             >>> # 文生图
             >>> image = provider.generate("一只柯基犬在草地上奔跑")
             >>> # 图生图
@@ -171,7 +171,7 @@ class ThirtyTwoNanoBananaProvider(BaseImageProvider):
             ... )
         """
         if not self.is_available():
-            raise ValueError("ThirtyTwoNanoBananaProvider not available - check THIRTYTWO_GEMINI_IMAGE_API_KEY or THIRTYTWO_API_KEY")
+            raise ValueError("AI302NanoBananaProvider not available - check AI302_GEMINI_IMAGE_API_KEY or AI302_API_KEY")
 
         # 根据是否提供 images 参数选择 API 端点
         if images:
@@ -258,4 +258,4 @@ class ThirtyTwoNanoBananaProvider(BaseImageProvider):
 
 
 # 单例实例
-thirtytwo_nano_banana_provider: ThirtyTwoNanoBananaProvider = ThirtyTwoNanoBananaProvider()
+ai302_nano_banana_provider: AI302NanoBananaProvider = AI302NanoBananaProvider()

@@ -12,19 +12,19 @@ from src.backend.config import config
 from src.backend.providers.llm import (
     BaseLLMProvider,
     gemini_provider,
-    thirtytwo_provider,
+    ai302_provider,
     zhipu_provider,
 )
 from src.backend.providers.image import (
     BaseImageProvider,
     gemini_image_provider,
-    thirtytwo_gemini_image_provider,
-    thirtytwo_nano_banana_provider,
-    thirtytwo_seedream_provider,
+    ai302_gemini_image_provider,
+    ai302_nano_banana_provider,
+    ai302_seedream_provider,
 )
 from src.backend.providers.video import (
     BaseVideoProvider,
-    thirtytwo_kling_provider,
+    ai302_kling_provider,
 )
 
 
@@ -42,20 +42,20 @@ class ProviderRegistry:
     _llm_providers: dict[str, BaseLLMProvider] = {
         "zhipu": zhipu_provider,
         "gemini": gemini_provider,
-        "thirtytwo": thirtytwo_provider,
+        "302ai": ai302_provider,
     }
 
     # Image Providers
     _image_providers: dict[str, BaseImageProvider] = {
         "gemini": gemini_image_provider,
-        "thirtytwo_gemini": thirtytwo_gemini_image_provider,
-        "thirtytwo_nano_banana": thirtytwo_nano_banana_provider,
-        "thirtytwo_seedream": thirtytwo_seedream_provider,
+        "302ai_gemini": ai302_gemini_image_provider,
+        "302ai_nano_banana": ai302_nano_banana_provider,
+        "302ai_seedream": ai302_seedream_provider,
     }
 
     # Video Providers
     _video_providers: dict[str, BaseVideoProvider] = {
-        "thirtytwo_kling": thirtytwo_kling_provider,
+        "302ai_kling": ai302_kling_provider,
     }
 
     @classmethod
@@ -63,7 +63,7 @@ class ProviderRegistry:
         """获取 LLM Provider
 
         Args:
-            vendor: 厂商名称 (zhipu, gemini, thirtytwo)
+            vendor: 厂商名称 (zhipu, gemini, 302ai)
 
         Returns:
             Provider 实例，不存在则返回 None
@@ -75,7 +75,7 @@ class ProviderRegistry:
         """获取 Image Provider
 
         Args:
-            vendor: 厂商名称 (gemini)
+            vendor: 厂商名称 (gemini, 302ai_gemini, 302ai_nano_banana, 302ai_seedream)
 
         Returns:
             Provider 实例，不存在则返回 None
@@ -87,7 +87,7 @@ class ProviderRegistry:
         """获取 Video Provider
 
         Args:
-            vendor: 厂商名称 (thirtytwo_kling)
+            vendor: 厂商名称 (302ai_kling)
 
         Returns:
             Provider 实例，不存在则返回 None

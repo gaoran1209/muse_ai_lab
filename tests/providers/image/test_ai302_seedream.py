@@ -1,6 +1,6 @@
-"""ThirtyTwoSeedreamProvider generate 函数测试
+"""AI302SeedreamProvider generate 函数测试
 
-需要配置 THIRTYTWO_API_KEY 环境变量才能运行。
+需要配置 AI302_API_KEY 环境变量才能运行。
 """
 
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.providers.image.thirtytwo_seedream import ThirtyTwoSeedreamProvider
+from src.backend.providers.image.ai302_seedream import AI302SeedreamProvider
 from src.backend.logger import logger
 
 # 输出目录
@@ -31,8 +31,8 @@ def save_image(image_data: bytes, prefix: str) -> Path:
 
 
 @pytest.mark.skipif(
-    not os.getenv("THIRTYTWO_API_KEY"),
-    reason="需要配置 THIRTYTWO_API_KEY"
+    not os.getenv("AI302_API_KEY"),
+    reason="需要配置 AI302_API_KEY"
 )
 class TestThirtyTwoSeedreamGenerate:
     """测试 Seedream generate 函数"""
@@ -40,7 +40,7 @@ class TestThirtyTwoSeedreamGenerate:
     def test_generate_text_to_image_default_params(self):
         """测试文生图：仅使用提示词，其他参数使用默认值"""
         model_name = "doubao-seedream-5-0-260128"
-        provider = ThirtyTwoSeedreamProvider()
+        provider = AI302SeedreamProvider()
         provider.model_name = model_name
         provider.default_model = model_name
         prompt = "一只可爱的橘猫坐在窗台上，阳光洒在它身上，数字艺术风格"
@@ -58,7 +58,7 @@ class TestThirtyTwoSeedreamGenerate:
     def test_generate_with_single_image(self):
         """测试图生图：提示词 + 单张图片，其他参数使用默认值"""
         model_name = "doubao-seedream-5-0-260128"
-        provider = ThirtyTwoSeedreamProvider()
+        provider = AI302SeedreamProvider()
         provider.model_name = model_name
         provider.default_model = model_name
         prompt = "变成卡通风格"
@@ -77,7 +77,7 @@ class TestThirtyTwoSeedreamGenerate:
     def test_generate_with_multiple_images(self):
         """测试多图融合：提示词 + 多张图片，其他参数使用默认值"""
         model_name = "doubao-seedream-5-0-260128"
-        provider = ThirtyTwoSeedreamProvider()
+        provider = AI302SeedreamProvider()
         provider.model_name = model_name
         provider.default_model = model_name
         prompt = "将图1的服装换为图2的服装"

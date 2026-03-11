@@ -27,6 +27,8 @@ export default function Dashboard() {
     error,
     loadProjects,
     createProjectAndOpen,
+    duplicateProjectAndOpen,
+    deleteProjectById,
     renameProject,
   } = useSparkStore();
 
@@ -48,6 +50,22 @@ export default function Dashboard() {
 
     try {
       await renameProject(projectId, trimmedName);
+    } catch {
+      // 错误由全局 store 状态展示
+    }
+  };
+
+  const handleDuplicate = async (projectId: string) => {
+    const project = await duplicateProjectAndOpen(projectId);
+    navigate(`/canvas/${project.id}`);
+  };
+
+  const handleDelete = async (projectId: string, projectName: string) => {
+    const confirmed = window.confirm(`确认删除方案“${projectName}”？此操作不可撤销。`);
+    if (!confirmed) return;
+
+    try {
+      await deleteProjectById(projectId);
     } catch {
       // 错误由全局 store 状态展示
     }
@@ -128,17 +146,19 @@ export default function Dashboard() {
                   <div className="project-card-actions">
                     <button
                       type="button"
-                      onClick={() => {
-                        void handleRename(project.id, project.name);
-                      }}
+                      onClick={() => void handleRename(project.id, project.name)}
                       disabled={busy}
                     >
                       重命名
                     </button>
-                    <button type="button" disabled title="当前后端未提供复制接口">
+                    <button type="button" onClick={() => void handleDuplicate(project.id)} disabled={busy}>
                       复制
                     </button>
-                    <button type="button" disabled title="当前前端未接入删除流程">
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(project.id, project.name)}
+                      disabled={busy}
+                    >
                       删除
                     </button>
                   </div>

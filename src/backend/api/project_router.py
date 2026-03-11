@@ -38,6 +38,14 @@ def update_project(project_id: str, payload: ProjectUpdate, db: Session = Depend
         raise HTTPException(status_code=404, detail="Project not found") from exc
 
 
+@router.post("/{project_id}/duplicate", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
+def duplicate_project(project_id: str, db: Session = Depends(get_db)) -> ProjectResponse:
+    try:
+        return ProjectService.duplicate_project(db, project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+
+
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(project_id: str, db: Session = Depends(get_db)) -> Response:
     try:

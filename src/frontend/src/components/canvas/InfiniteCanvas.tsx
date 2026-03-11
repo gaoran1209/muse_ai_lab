@@ -1,3 +1,4 @@
+import { ActiveSelection } from 'fabric';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFabricCanvas } from '../../hooks/useFabricCanvas';
 import { useCanvasStore } from '../../store';
@@ -20,6 +21,7 @@ interface InfiniteCanvasProps {
   ) => Promise<void>;
   onToggleAdopt: (shotId: string, adopted: boolean) => void;
   onUploadFiles: (files: File[]) => Promise<void> | void;
+  onReplaceLookItemAsset: (lookId: string, itemId: string, assetId: string) => void;
 }
 
 interface ToolbarSelection {
@@ -55,6 +57,31 @@ interface LocalBoard {
   frame: FramePosition;
   itemIds: string[];
 }
+
+interface ClipboardNodeDescriptor {
+  kind: 'node';
+  nodeKind: LocalNode['kind'];
+  type: CanvasNodeType;
+  label: string;
+  prompt: string;
+  x: number;
+  y: number;
+  imageUrl?: string | null;
+  statusText?: string | null;
+}
+
+interface ClipboardBoardDescriptor {
+  kind: 'board';
+  name: string;
+  prompt: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  children: ClipboardNodeDescriptor[];
+}
+
+type ClipboardDescriptor = ClipboardNodeDescriptor | ClipboardBoardDescriptor;
 
 type Position = { x: number; y: number };
 type FramePosition = { x: number; y: number; width: number; height: number };
@@ -149,6 +176,7 @@ export function InfiniteCanvas({
   onGenerateShot,
   onToggleAdopt,
   onUploadFiles,
+  onReplaceLookItemAsset,
 }: InfiniteCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -165,9 +193,11 @@ export function InfiniteCanvas({
   const [lookFrameOverrides, setLookFrameOverrides] = useState<Record<string, FramePosition>>({});
   const [shotPositionOverrides, setShotPositionOverrides] = useState<Record<string, Position>>({});
   const [hiddenLookIds, setHiddenLookIds] = useState<string[]>([]);
+  const [hiddenLookItemIds, setHiddenLookItemIds] = useState<string[]>([]);
   const [hiddenShotIds, setHiddenShotIds] = useState<string[]>([]);
   const [localNodes, setLocalNodes] = useState<LocalNode[]>([]);
   const [localBoards, setLocalBoards] = useState<LocalBoard[]>([]);
+  const clipboardRef = useRef<ClipboardDescriptor[]>([]);
 
   const visibleLooks = useMemo(
     () => looks.filter((look) => !hiddenLookIds.includes(look.id)),
@@ -195,6 +225,83 @@ export function InfiniteCanvas({
     [shotPositionOverrides, visibleShots]
   );
 
+  const buildLocalNodeFromDescriptor = useCallback(
+    (descriptor: ClipboardNodeDescriptor, index = 0): LocalNode => ({
+      id: `${descriptor.nodeKind}-${Date.now()}-${index}`,
+      kind: descriptor.nodeKind,
+      type: descriptor.type,
+      label: descriptor.label,
+      prompt: descriptor.prompt,
+      x: descriptor.x,
+      y: descriptor.y,
+      imageUrl: descriptor.imageUrl ?? null,
+      statusText: descriptor.statusText ?? null,
+    }),
+    []
+  );
+
+  const buildBoardClipboardDescriptor = useCallback(
+    (boardId: string): ClipboardBoardDescriptor | null => {
+      const localBoard = localBoards.find((item) => item.id === boardId);
+      if (localBoard) {
+        const children = localBoard.itemIds
+          .map((itemId) => localNodes.find((node) => node.id === itemId))
+          .filter((node): node is LocalNode => Boolean(node))
+          .map((node) => ({
+            kind: 'node' as const,
+            nodeKind: node.kind,
+            type: node.type,
+            label: node.label,
+            prompt: node.prompt,
+            x: node.x,
+            y: node.y,
+            imageUrl: node.imageUrl ?? null,
+            statusText: node.statusText ?? null,
+          }));
+        return {
+          kind: 'board',
+          name: localBoard.name,
+          prompt: localBoard.prompt,
+          x: localBoard.frame.x,
+          y: localBoard.frame.y,
+          width: localBoard.frame.width,
+          height: localBoard.frame.height,
+          children,
+        };
+      }
+
+      const look = looksWithOverrides.find((item) => item.id === boardId);
+      if (!look) return null;
+      const children = look.items
+        .filter((item) => !hiddenLookItemIds.includes(item.id))
+        .map((item, itemIndex) => {
+          const position = computeNodePositionInFrame(look.frame, itemIndex, look.items.length);
+          return {
+            kind: 'node' as const,
+            nodeKind: 'asset-image' as const,
+            type: 'image' as const,
+            label: item.category,
+            prompt: item.placeholder_desc ?? '',
+            x: position.x,
+            y: position.y,
+            imageUrl: item.asset_url ?? null,
+            statusText: null,
+          };
+        });
+      return {
+        kind: 'board',
+        name: look.name,
+        prompt: look.description ?? '',
+        x: look.frame.x,
+        y: look.frame.y,
+        width: look.frame.width,
+        height: look.frame.height,
+        children,
+      };
+    },
+    [hiddenLookItemIds, localBoards, localNodes, looksWithOverrides]
+  );
+
   const { canvas, viewport, resize, setZoom, pan } = useFabricCanvas(canvasRef, {
     width: window.innerWidth,
     height: window.innerHeight,
@@ -204,6 +311,8 @@ export function InfiniteCanvas({
       if (filtered.length === 0) {
         setToolbarSelection(null);
         setPromptSelection(null);
+        setSelectedImageDataUrl(null);
+        setSelectedImageUrl(null);
         return;
       }
 
@@ -227,9 +336,13 @@ export function InfiniteCanvas({
 
       const entityId = primary.entityId ?? '';
       const data = primary.data ?? {};
+      const selectionImageUrl = typeof data.imageUrl === 'string' ? data.imageUrl : null;
       const nodeType = (data.nodeType as CanvasNodeType | undefined) ?? 'image';
       const nodeLabel = (data.label as string | undefined) ?? 'Node';
       const prompt = (data.prompt as string | undefined) ?? '';
+
+      setSelectedImageDataUrl(selectionImageUrl?.startsWith('data:') ? selectionImageUrl : null);
+      setSelectedImageUrl(selectionImageUrl);
 
       if (primary.kind === 'look-board') {
         const localBoard = localBoards.find((item) => item.id === entityId);
@@ -239,7 +352,7 @@ export function InfiniteCanvas({
             kind: 'Board',
             label: localBoard.name,
             prompt: localBoard.prompt,
-            helper: '这一组对象会作为 Board 一起进行移动和生成。',
+            helper: '输入文本会与当前 Board 一起发送给模型。',
           });
           return;
         }
@@ -250,7 +363,7 @@ export function InfiniteCanvas({
           kind: 'Board',
           label: look.name,
           prompt: look.description ?? '',
-          helper: '这一组对象会作为 Look 一起进行移动和生成。',
+          helper: '输入文本会与当前 Look 一起发送给模型。',
         });
         return;
       }
@@ -263,7 +376,7 @@ export function InfiniteCanvas({
           kind: shot.type === 'video' ? 'Video' : 'Image',
           label: shot.adopted ? '已采纳结果' : '生成结果',
           prompt: prompt,
-          helper: '选中后可继续补充 prompt，并决定是否采纳。',
+          helper: '输入文本会与当前结果节点一起发送给模型。',
           mode: shot.type,
         });
         return;
@@ -277,10 +390,10 @@ export function InfiniteCanvas({
           prompt,
           helper:
             primary.kind === 'look-item-node'
-              ? '这是当前 Board 内的对象。'
+              ? '输入文本会与当前对象一起发送给模型。'
               : primary.kind === 'asset-image'
-                ? '拖入画布的图像会作为输入节点使用。'
-                : '选中后，上方显示基础操作，下方显示 prompt 对话框。',
+                ? '拖入画布的图像会作为输入节点发送给模型。'
+                : '选中对象后，底部会出现 prompt 对话框。',
           mode: nodeType === 'text' ? undefined : nodeType,
         });
         return;
@@ -325,6 +438,174 @@ export function InfiniteCanvas({
     return () => window.removeEventListener('resize', handleResize);
   }, [resize]);
 
+  const buildSelectionClipboard = useCallback((): ClipboardDescriptor[] => {
+    if (!canvas) return [];
+    const activeObjects = canvas.getActiveObjects();
+    const descriptors: ClipboardDescriptor[] = [];
+    const consumedIds = new Set<string>();
+
+    activeObjects.forEach((object) => {
+      const data = (object.get('data') as Record<string, unknown> | undefined) ?? {};
+      const entityId = data.entityId as string | undefined;
+      const kind = data.kind as string | undefined;
+      if (!entityId || !kind || consumedIds.has(entityId)) return;
+
+      if (kind === 'look-board') {
+        const boardDescriptor = buildBoardClipboardDescriptor(entityId);
+        if (boardDescriptor) {
+          descriptors.push(boardDescriptor);
+          boardDescriptor.children.forEach((child) => consumedIds.add(`${child.label}-${child.x}-${child.y}`));
+        }
+        return;
+      }
+
+      const bounds = object.getBoundingRect();
+      const nodeType =
+        (data.nodeType as CanvasNodeType | undefined) ??
+        (kind === 'shot-node' ? (((data.label as string | undefined) ?? '').toLowerCase() === 'video' ? 'video' : 'image') : 'image');
+      descriptors.push({
+        kind: 'node',
+        nodeKind: kind === 'prompt-node' ? 'prompt-node' : 'asset-image',
+        type: nodeType,
+        label: (data.label as string | undefined) ?? 'Image',
+        prompt: (data.prompt as string | undefined) ?? '',
+        x: bounds.left + bounds.width / 2,
+        y: bounds.top + bounds.height / 2,
+        imageUrl: (data.imageUrl as string | undefined) ?? null,
+        statusText: (data.statusText as string | undefined) ?? null,
+      });
+    });
+
+    return descriptors;
+  }, [buildBoardClipboardDescriptor, canvas]);
+
+  const pasteClipboard = useCallback(() => {
+    if (clipboardRef.current.length === 0) return;
+    const offset = 36;
+    const nextNodes: LocalNode[] = [];
+    const nextBoards: LocalBoard[] = [];
+
+    clipboardRef.current.forEach((descriptor, descriptorIndex) => {
+      if (descriptor.kind === 'node') {
+        nextNodes.push(
+          buildLocalNodeFromDescriptor(
+            {
+              ...descriptor,
+              x: descriptor.x + offset,
+              y: descriptor.y + offset,
+            },
+            descriptorIndex
+          )
+        );
+        return;
+      }
+
+      const childIds: string[] = [];
+      descriptor.children.forEach((child, childIndex) => {
+        const nextNode = buildLocalNodeFromDescriptor(
+          {
+            ...child,
+            x: child.x + offset,
+            y: child.y + offset,
+          },
+          descriptorIndex * 100 + childIndex
+        );
+        childIds.push(nextNode.id);
+        nextNodes.push(nextNode);
+      });
+
+      nextBoards.push({
+        id: `local-board-${Date.now()}-${descriptorIndex}`,
+        name: descriptor.name,
+        prompt: descriptor.prompt,
+        itemIds: childIds,
+        frame: {
+          x: descriptor.x + offset,
+          y: descriptor.y + offset,
+          width: descriptor.width,
+          height: descriptor.height,
+        },
+      });
+    });
+
+    if (nextNodes.length > 0) {
+      setLocalNodes((prev) => [...prev, ...nextNodes]);
+    }
+    if (nextBoards.length > 0) {
+      setLocalBoards((prev) => [...prev, ...nextBoards]);
+    }
+  }, [buildLocalNodeFromDescriptor]);
+
+  const deleteSelection = useCallback(() => {
+    if (!canvas) return;
+    const activeObjects = canvas.getActiveObjects();
+    if (activeObjects.length === 0) return;
+
+    const nextHiddenLookIds = new Set<string>();
+    const nextHiddenLookItemIds = new Set<string>();
+    const nextHiddenShotIds = new Set<string>();
+    const nextLocalNodeIds = new Set<string>();
+    const nextLocalBoardIds = new Set<string>();
+
+    activeObjects.forEach((object) => {
+      const data = (object.get('data') as Record<string, unknown> | undefined) ?? {};
+      const entityId = data.entityId as string | undefined;
+      const kind = data.kind as string | undefined;
+      if (!entityId || !kind) return;
+
+      if (kind === 'look-board') {
+        if (localBoards.some((item) => item.id === entityId)) {
+          nextLocalBoardIds.add(entityId);
+        } else {
+          nextHiddenLookIds.add(entityId);
+        }
+        return;
+      }
+
+      if (kind === 'look-item-node') {
+        nextHiddenLookItemIds.add(entityId);
+        return;
+      }
+
+      if (kind === 'shot-node') {
+        nextHiddenShotIds.add(entityId);
+        return;
+      }
+
+      if (kind === 'prompt-node' || kind === 'asset-image') {
+        nextLocalNodeIds.add(entityId);
+      }
+    });
+
+    if (nextHiddenLookIds.size > 0) {
+      setHiddenLookIds((prev) => [...prev, ...Array.from(nextHiddenLookIds)]);
+    }
+    if (nextHiddenLookItemIds.size > 0) {
+      setHiddenLookItemIds((prev) => [...prev, ...Array.from(nextHiddenLookItemIds)]);
+    }
+    if (nextHiddenShotIds.size > 0) {
+      setHiddenShotIds((prev) => [...prev, ...Array.from(nextHiddenShotIds)]);
+    }
+    if (nextLocalNodeIds.size > 0) {
+      setLocalNodes((prev) => prev.filter((node) => !nextLocalNodeIds.has(node.id)));
+    }
+    if (nextLocalBoardIds.size > 0) {
+      setLocalBoards((prev) => prev.filter((board) => !nextLocalBoardIds.has(board.id)));
+    }
+
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+  }, [canvas, localBoards]);
+
+  const selectAllObjects = useCallback(() => {
+    if (!canvas) return;
+    const selectableObjects = canvas.getObjects().filter((object) => object.selectable && object.visible !== false);
+    if (selectableObjects.length === 0) return;
+    const selection = new ActiveSelection(selectableObjects, { canvas });
+    canvas.setActiveObject(selection);
+    canvas.requestRenderAll();
+  }, [canvas]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.code === 'Space' && !event.repeat) {
@@ -332,30 +613,25 @@ export function InfiniteCanvas({
         setIsSpacePressed(true);
       }
       if ((event.code === 'Delete' || event.code === 'Backspace') && canvas) {
-        const active = canvas.getActiveObject() as { get?: (key: string) => unknown } | null;
-        const data = (active?.get?.('data') as Record<string, unknown> | undefined) ?? {};
-        const kind = data.kind as string | undefined;
-        const entityId = data.entityId as string | undefined;
-        if (kind === 'look-board' && entityId) {
+        const active = canvas.getActiveObject();
+        if (active && !(active as { isEditing?: boolean }).isEditing) {
           event.preventDefault();
-          setHiddenLookIds((prev) => (prev.includes(entityId) ? prev : [...prev, entityId]));
-          canvas.discardActiveObject();
-          canvas.requestRenderAll();
-          return;
+          deleteSelection();
         }
-        if ((kind === 'prompt-node' || kind === 'asset-image') && entityId) {
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
+        if (canvas?.getActiveObjects().length) {
           event.preventDefault();
-          setLocalNodes((prev) => prev.filter((node) => node.id !== entityId));
-          canvas.discardActiveObject();
-          canvas.requestRenderAll();
-          return;
+          clipboardRef.current = buildSelectionClipboard();
         }
-        if (kind === 'shot-node' && entityId) {
-          event.preventDefault();
-          setHiddenShotIds((prev) => (prev.includes(entityId) ? prev : [...prev, entityId]));
-          canvas.discardActiveObject();
-          canvas.requestRenderAll();
-        }
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'v') {
+        event.preventDefault();
+        pasteClipboard();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        selectAllObjects();
       }
       if (event.code === 'Escape') {
         setPanning(false);
@@ -376,7 +652,7 @@ export function InfiniteCanvas({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [canvas, setPanning]);
+  }, [buildSelectionClipboard, canvas, deleteSelection, pasteClipboard, selectAllObjects, setPanning]);
 
   useEffect(() => {
     if (!canvas) return;
@@ -418,6 +694,7 @@ export function InfiniteCanvas({
         }
 
         for (const [itemIndex, item] of look.items.entries()) {
+          if (hiddenLookItemIds.includes(item.id)) continue;
           const position = computeNodePositionInFrame(look.frame, itemIndex, look.items.length);
           const node = await createCanvasNodeGroup(
             {
@@ -568,6 +845,25 @@ export function InfiniteCanvas({
           canvas.requestRenderAll();
         });
         frame.on('modified', () => {
+          // Sync children positions to React state
+          const newPositions: Record<string, { x: number; y: number }> = {};
+          board.itemIds.forEach((itemId) => {
+            const node = canvas
+              .getObjects()
+              .find((object) => ((object.get('data') as Record<string, unknown> | undefined)?.entityId as string | undefined) === itemId);
+            if (node) {
+              newPositions[itemId] = { x: node.left ?? 0, y: node.top ?? 0 };
+            }
+          });
+
+          setLocalNodes((prev) =>
+            prev.map((item) =>
+              newPositions[item.id]
+                ? { ...item, x: newPositions[item.id].x, y: newPositions[item.id].y }
+                : item
+            )
+          );
+
           setLocalBoards((prev) =>
             prev.map((item) =>
               item.id === board.id
@@ -595,7 +891,7 @@ export function InfiniteCanvas({
     return () => {
       disposed = true;
     };
-  }, [canvas, localBoards, localNodes, looksWithOverrides, shotsWithOverrides]);
+  }, [canvas, hiddenLookItemIds, localBoards, localNodes, looksWithOverrides, shotsWithOverrides]);
 
   const isActuallyPanning = isSpacePressed || isPanning;
 
@@ -714,6 +1010,9 @@ export function InfiniteCanvas({
   const handleDrop = useCallback(
     async (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
+      const containerBounds = event.currentTarget.getBoundingClientRect();
+      const screenX = event.clientX - containerBounds.left;
+      const screenY = event.clientY - containerBounds.top;
       const dropX = (event.clientX + viewport.x) / viewport.zoom;
       const dropY = (event.clientY + viewport.y) / viewport.zoom;
 
@@ -749,6 +1048,31 @@ export function InfiniteCanvas({
 
       try {
         const asset = JSON.parse(payload) as { id: string; url: string; label: string };
+        const targetObject = canvas
+          ?.getObjects()
+          .find((object) => {
+            const data = object.get('data') as Record<string, unknown> | undefined;
+            if (data?.kind !== 'look-item-node') return false;
+            const bounds = object.getBoundingRect();
+            return (
+              screenX >= bounds.left &&
+              screenX <= bounds.left + bounds.width &&
+              screenY >= bounds.top &&
+              screenY <= bounds.top + bounds.height
+            );
+          });
+        const targetItemId = (targetObject?.get('data') as Record<string, unknown> | undefined)?.entityId as
+          | string
+          | undefined;
+
+        if (targetItemId) {
+          const targetLook = looks.find((look) => look.items.some((item) => item.id === targetItemId));
+          if (targetLook) {
+            onReplaceLookItemAsset(targetLook.id, targetItemId, asset.id);
+            return;
+          }
+        }
+
         addLocalNode({
           id: `${asset.id}-${Date.now()}`,
           kind: 'asset-image',
@@ -763,7 +1087,7 @@ export function InfiniteCanvas({
         // Ignore malformed payloads.
       }
     },
-    [addLocalNode, onUploadFiles, viewport]
+    [addLocalNode, canvas, looks, onReplaceLookItemAsset, onUploadFiles, viewport]
   );
 
   const handleSelectionPromptChange = useCallback(
@@ -942,6 +1266,7 @@ export function InfiniteCanvas({
       ) : null}
 
       <BottomPromptBar
+        visible={Boolean(promptSelection)}
         onImageGenerated={handleImageGenerated}
         onVideoGenerated={handleVideoGenerated}
         selectedImageDataUrl={selectedImageDataUrl}

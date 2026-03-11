@@ -52,14 +52,14 @@ class Config:
     #   - gemini-3.1-flash-image-preview   # Nano Banana 2
     #   - gemini-3-pro-image-preview       # Nano Banana Pro
     #   - gemini-3.1-flash-lite-preview    # 多模态 LLM
-    THIRTYTWO_API_KEY = _clean_secret("THIRTYTWO_API_KEY")
-    THIRTYTWO_LLM_MODEL = os.getenv("THIRTYTWO_LLM_MODEL")
+    AI302_API_KEY = _clean_secret("AI302_API_KEY")
+    AI302_LLM_MODEL = os.getenv("AI302_LLM_MODEL")
 
     # =============================================================================
     # 302.AI 图片生成配置（非默认，用于 Nano-Banana WS 专用 API / Seedream API）
-    # 默认图片生成通过 thirtytwo_gemini provider 使用 Chat Completions API
+    # 默认图片生成通过 302.AI Gemini provider 使用 Chat Completions API
     # =============================================================================
-    THIRTYTWO_IMAGE_MODEL = os.getenv("THIRTYTWO_IMAGE_MODEL")
+    AI302_IMAGE_MODEL = os.getenv("AI302_IMAGE_MODEL")
 
     # =============================================================================
     # 302.AI Kling 视频生成配置
@@ -69,7 +69,7 @@ class Config:
     #   - kling-v-1-5-260121               # Kling v1.5（默认，最新版本）
     #   - kling-v-1-260121                 # Kling v1
     # 文档: https://doc.302.ai/421815034e0
-    THIRTYTWO_VIDEO_MODEL = os.getenv("THIRTYTWO_VIDEO_MODEL")
+    AI302_VIDEO_MODEL = os.getenv("AI302_VIDEO_MODEL")
 
     # =============================================================================
     # 数据库配置

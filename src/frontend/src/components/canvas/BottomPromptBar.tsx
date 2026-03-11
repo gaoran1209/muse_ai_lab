@@ -32,6 +32,7 @@ export interface PromptSelection {
 }
 
 interface Props {
+  visible?: boolean;
   onImageGenerated: (base64: string) => void;
   onVideoGenerated: (base64: string) => void;
   selectedImageDataUrl?: string | null;
@@ -51,12 +52,13 @@ const IMAGE_MODEL_LABELS: Record<string, string> = {
 
 function shortLabel(vendor: string): string {
   const map: Record<string, string> = {
-    thirtytwo_nano_banana: 'Nano Banana',
-    thirtytwo_seedream: 'Seedream',
-    thirtytwo_kling: 'Kling',
+    '302ai_nano_banana': 'Nano Banana',
+    '302ai_seedream': 'Seedream',
+    '302ai_kling': 'Kling',
     zhipu: 'Zhipu',
     gemini: 'Gemini',
-    thirtytwo: '302.AI',
+    '302ai': '302.AI',
+    '302ai_gemini': '302.AI Gemini',
   };
   return map[vendor] ?? vendor;
 }
@@ -103,6 +105,7 @@ async function uploadImageToOSS(file: File): Promise<string> {
 }
 
 export function BottomPromptBar({
+  visible = true,
   onImageGenerated,
   onVideoGenerated,
   selectedImageDataUrl,
@@ -170,6 +173,13 @@ export function BottomPromptBar({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     });
   }, [selection?.id, selection?.prompt, selection?.mode]);
+
+  useEffect(() => {
+    if (visible) return;
+    setPrompt('');
+    setError(null);
+    setOpenChip(null);
+  }, [visible]);
 
   function buildDefaults(provider: ProviderInfo): Record<string, unknown> {
     return Object.fromEntries(
@@ -370,20 +380,22 @@ export function BottomPromptBar({
     );
   }
 
+  if (!visible || !selection) {
+    return null;
+  }
+
   return (
     <div className="bottom-prompt-bar" onClick={() => setOpenChip(null)}>
-      {selection ? (
-        <div className="selection-context-row">
-          <div className="selection-context-copy">
-            <span className="selection-context-kicker">{selection.kind}</span>
-            <strong>{selection.label}</strong>
-            {selection.helper ? <em>{selection.helper}</em> : null}
-          </div>
-          <button type="button" className="selection-clear-button" onClick={onClearSelection}>
-            关闭
-          </button>
+      <div className="selection-context-row">
+        <div className="selection-context-copy">
+          <span className="selection-context-kicker">{selection.kind}</span>
+          <strong>{selection.label}</strong>
+          {selection.helper ? <em>{selection.helper}</em> : null}
         </div>
-      ) : null}
+        <button type="button" className="selection-clear-button" onClick={onClearSelection}>
+          关闭
+        </button>
+      </div>
 
       {selectedImageDataUrl || selectedImageUrl ? (
         <div className="selected-image-row">
@@ -393,7 +405,7 @@ export function BottomPromptBar({
             className="selected-image-thumb"
           />
           <span className="selected-image-label">
-            {selection ? '当前对象会引用已选中的参考图' : '已选中参考图片'}
+            当前对象会与这张图一起发送给模型
           </span>
         </div>
       ) : null}
@@ -404,7 +416,7 @@ export function BottomPromptBar({
         value={prompt}
         onChange={handleTextareaInput}
         onKeyDown={handleKeyDown}
-        placeholder={selection ? '编辑当前对象的 prompt...' : 'Describe anything you want to generate'}
+        placeholder="描述你希望当前对象如何变化..."
         rows={2}
       />
 

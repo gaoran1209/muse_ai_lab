@@ -1,6 +1,6 @@
-"""ThirtyTwoKlingProvider generate 函数测试
+"""AI302KlingProvider generate 函数测试
 
-需要配置 THIRTYTWO_API_KEY 环境变量才能运行。
+需要配置 AI302_API_KEY 环境变量才能运行。
 """
 
 import os
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backend.providers.video.thirtytwo_kling import ThirtyTwoKlingProvider
+from src.backend.providers.video.ai302_kling import AI302KlingProvider
 from src.backend.logger import logger
 
 # 输出目录
@@ -36,8 +36,8 @@ TEST_IMAGE_URL_2 = "https://jv-comfyui-image.tiangong.tech/dify_upload/dify_uplo
 
 
 @pytest.mark.skipif(
-    not os.getenv("THIRTYTWO_API_KEY"),
-    reason="需要配置 THIRTYTWO_API_KEY"
+    not os.getenv("AI302_API_KEY"),
+    reason="需要配置 AI302_API_KEY"
 )
 class TestThirtyTwoKlingGenerate:
     """测试 generate 函数"""
@@ -45,7 +45,7 @@ class TestThirtyTwoKlingGenerate:
     def test_generate_prompt_only_sync(self):
         """测试文生视频（同步模式，等待结果）"""
         model_name = "kling-v2-5-turbo"
-        provider = ThirtyTwoKlingProvider()
+        provider = AI302KlingProvider()
         provider.model_name = model_name
         prompt = "一只可爱的小鸟在树枝上唱歌，阳光透过树叶洒下"
 
@@ -69,7 +69,7 @@ class TestThirtyTwoKlingGenerate:
     def test_generate_with_first_frame(self):
         """测试图生视频：提示词 + 首帧图（单图生成视频）"""
         model_name = "kling-v2-5-turbo"
-        provider = ThirtyTwoKlingProvider()
+        provider = AI302KlingProvider()
         provider.model_name = model_name
         prompt = "让画面动起来，展现微妙的动态，猫咪轻轻摇动尾巴"
         images = TEST_IMAGE_URL
@@ -94,7 +94,7 @@ class TestThirtyTwoKlingGenerate:
     def test_generate_with_first_and_last_frames(self):
         """测试图生视频：提示词 + 首尾帧图（多图生成视频）"""
         model_name = "kling-v2-5-turbo"
-        provider = ThirtyTwoKlingProvider()
+        provider = AI302KlingProvider()
         provider.model_name = model_name
         prompt = "从第一帧的场景过渡到第二帧的场景，展现平滑的转场效果"
         images = [TEST_IMAGE_URL, TEST_IMAGE_URL_2]

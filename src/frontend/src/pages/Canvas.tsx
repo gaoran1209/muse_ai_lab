@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AssetPanel } from '../components/canvas/AssetPanel';
+import { GenerationActionDialog } from '../components/canvas/GenerationActionDialog';
 import { InfiniteCanvas } from '../components/canvas/InfiniteCanvas';
 import { PublishDialog } from '../components/canvas/PublishDialog';
 import { ResultPanel } from '../components/canvas/ResultPanel';
@@ -25,14 +26,22 @@ export default function CanvasPage() {
     renameProject,
     setActiveCategory,
     uploadAssetFiles,
+    updateAssetMeta,
+    deleteAssetById,
     generateLooksForAssets,
     generateShotForLook,
     togglePublishShotSelection,
     setShotAdopted,
+    replaceLookItemAsset,
     publishSelectedShots,
     clearPublishSelection,
   } = useSparkStore();
   const [publishLookId, setPublishLookId] = useState<string | null>(null);
+  const [resultPanelOpen, setResultPanelOpen] = useState(false);
+  const [generationDialog, setGenerationDialog] = useState<{
+    lookId: string;
+    action: 'change_model' | 'change_background';
+  } | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftProjectName, setDraftProjectName] = useState('');
 
@@ -50,6 +59,7 @@ export default function CanvasPage() {
   }
 
   const publishLook = looks.find((look) => look.id === publishLookId) ?? null;
+  const generationLook = looks.find((look) => look.id === generationDialog?.lookId) ?? null;
   const publishShots = shots.filter(
     (shot) => selectedPublishShotIds.includes(shot.id) && shot.look_id === publishLookId
   );
@@ -129,6 +139,13 @@ export default function CanvasPage() {
           )}
         </div>
         <div className="canvas-status">
+          <button
+            type="button"
+            className={`canvas-results-toggle ${resultPanelOpen ? 'is-open' : ''}`}
+            onClick={() => setResultPanelOpen((value) => !value)}
+          >
+            {resultPanelOpen ? '关闭结果箱' : '结果箱'}
+          </button>
           {loadingWorkspace ? <span>Loading workspace...</span> : null}
           {busy ? <span>Syncing API...</span> : null}
           {error ? <span className="is-error">{error}</span> : null}
@@ -145,6 +162,12 @@ export default function CanvasPage() {
             if (!files || files.length === 0) return;
             const category = activeCategory === 'all' ? 'product' : activeCategory;
             void uploadAssetFiles(projectId, Array.from(files), category);
+          }}
+          onDeleteAsset={(assetId) => {
+            void deleteAssetById(assetId);
+          }}
+          onUpdateAsset={(assetId, payload) => {
+            void updateAssetMeta(assetId, payload);
           }}
         />
 
@@ -164,6 +187,10 @@ export default function CanvasPage() {
             });
           }}
           onGenerateShot={async (lookId, action, customPrompt) => {
+            if (action === 'change_model' || action === 'change_background') {
+              setGenerationDialog({ lookId, action });
+              return;
+            }
             await generateShotForLook(projectId, lookId, {
               action,
               customPrompt,
@@ -172,9 +199,13 @@ export default function CanvasPage() {
           onToggleAdopt={(shotId, adopted) => {
             void setShotAdopted(projectId, shotId, adopted);
           }}
+          onReplaceLookItemAsset={(lookId, itemId, assetId) => {
+            void replaceLookItemAsset(lookId, itemId, assetId);
+          }}
         />
 
         <ResultPanel
+          open={resultPanelOpen}
           looks={looks}
           shots={shots}
           selectedShotIds={selectedPublishShotIds}
@@ -197,6 +228,24 @@ export default function CanvasPage() {
           clearPublishSelection();
         }}
         onSubmit={handlePublishSubmit}
+      />
+
+      <GenerationActionDialog
+        open={generationDialog !== null}
+        look={generationLook}
+        action={generationDialog?.action ?? null}
+        busy={busy}
+        onClose={() => setGenerationDialog(null)}
+        onSubmit={async ({ presetId, customPrompt, parameters }) => {
+          if (!generationDialog) return;
+          await generateShotForLook(projectId, generationDialog.lookId, {
+            action: generationDialog.action,
+            presetId,
+            customPrompt,
+            parameters,
+          });
+          setGenerationDialog(null);
+        }}
       />
     </div>
   );

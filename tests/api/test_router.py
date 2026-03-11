@@ -167,7 +167,7 @@ class TestVideoAPI:
         response = client.post(
             "/api/v1/video/generate",
             json={
-                "vendor": "thirtytwo_kling",
+                "vendor": "302ai_kling",
                 "prompt": "clouds moving",
                 "parameters": {
                     "aspect_ratio": "16:9",
@@ -244,13 +244,13 @@ class TestExposedParams:
         assert "temperature" not in exposed_names
         assert "max_tokens" not in exposed_names
 
-    def test_thirtytwo_llm_no_exposed_params(self):
-        """测试 thirtytwo LLM 无暴露参数"""
+    def test_ai302_llm_no_exposed_params(self):
+        """测试 302.AI LLM 无暴露参数"""
         response = client.get("/api/v1/llm/providers")
         assert response.status_code == 200
         providers = response.json()
-        thirtytwo = next((p for p in providers if p["vendor"] == "thirtytwo"), None)
-        assert thirtytwo is not None
-        exposed_params = thirtytwo["info"]["exposed_params"]
-        # thirtytwo LLM 没有暴露参数
+        ai302_entry = next((p for p in providers if p["vendor"] == "302ai"), None)
+        assert ai302_entry is not None
+        exposed_params = ai302_entry["info"]["exposed_params"]
+        # 302.AI LLM 没有暴露参数
         assert len(exposed_params) == 0

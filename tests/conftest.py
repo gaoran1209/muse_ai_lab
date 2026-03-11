@@ -10,7 +10,7 @@ def _disable_live_provider_tests_by_default() -> None:
     """Skip live provider integration tests unless explicitly opted in."""
     if os.getenv("RUN_LIVE_PROVIDER_TESTS", "").lower() in {"1", "true", "yes", "on"}:
         return
-    for key in ("GEMINI_API_KEY", "ZHIPU_API_KEY", "THIRTYTWO_API_KEY"):
+    for key in ("GEMINI_API_KEY", "ZHIPU_API_KEY", "AI302_API_KEY"):
         os.environ.pop(key, None)
 
 

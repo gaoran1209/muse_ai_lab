@@ -13,9 +13,9 @@ API 文档:
     详细价格: https://app.klingai.com/cn/dev/document-api/productBilling/prePaidResourcePackage
 
 环境变量:
-    THIRTYTWO_KLING_API_KEY: 302.AI Kling API 密钥（优先）
-    THIRTYTWO_API_KEY: 302.AI 通用 API 密钥（备选）
-    THIRTYTWO_VIDEO_MODEL: 视频生成模型名称
+    AI302_KLING_API_KEY: 302.AI Kling API 密钥（优先）
+    AI302_API_KEY: 302.AI 通用 API 密钥（备选）
+    AI302_VIDEO_MODEL: 视频生成模型名称
 
 可用模型:
     Kling 系列:
@@ -27,7 +27,7 @@ API 文档:
         - kling-v2-5-turbo    # Kling 2.5 Turbo（快速版）
 
 示例:
-    >>> provider = ThirtyTwoKlingProvider()
+    >>> provider = AI302KlingProvider()
     >>> if provider.is_available():
     ...     # 文生视频（仅提示词）
     ...     video = provider.generate("在海滩上度假的快乐场景")
@@ -45,7 +45,7 @@ from ..param_spec import ParamSpec
 from .base import BaseVideoProvider
 
 
-class ThirtyTwoKlingProvider(BaseVideoProvider):
+class AI302KlingProvider(BaseVideoProvider):
     """302.AI Kling 可灵视频生成提供商
 
     使用 302.AI 的 Kling 可灵模型生成视频。
@@ -146,8 +146,8 @@ class ThirtyTwoKlingProvider(BaseVideoProvider):
 
     def __init__(self):
         super().__init__(
-            api_key=config.THIRTYTWO_API_KEY or "",
-            model_name=config.THIRTYTWO_VIDEO_MODEL
+            api_key=config.AI302_API_KEY or "",
+            model_name=config.AI302_VIDEO_MODEL
         )
         self.default_duration = 5
         self.default_aspect_ratio = "16:9"
@@ -157,10 +157,10 @@ class ThirtyTwoKlingProvider(BaseVideoProvider):
 
         if self.api_key:
             self.client = True
-            logger.info(f"ThirtyTwoKlingProvider initialized with model: {self.model_name}")
+            logger.info(f"AI302KlingProvider initialized with model: {self.model_name}")
         else:
             self.client = None
-            logger.debug("ThirtyTwoKlingProvider not initialized - THIRTYTWO_KLING_API_KEY or THIRTYTWO_API_KEY not configured")
+            logger.debug("AI302KlingProvider not initialized - AI302_KLING_API_KEY or AI302_API_KEY not configured")
 
     def generate(
         self,
@@ -201,7 +201,7 @@ class ThirtyTwoKlingProvider(BaseVideoProvider):
             RuntimeError: API 请求失败或任务执行失败
 
         示例:
-            >>> provider = ThirtyTwoKlingProvider()
+            >>> provider = AI302KlingProvider()
             >>> # 文生视频
             >>> video = provider.generate("在海滩上度假的快乐场景")
             >>> # 图生视频（单图）
@@ -217,7 +217,7 @@ class ThirtyTwoKlingProvider(BaseVideoProvider):
             ... )
         """
         if not self.is_available():
-            raise ValueError("ThirtyTwoKlingProvider not available - check THIRTYTWO_KLING_API_KEY or THIRTYTWO_API_KEY")
+            raise ValueError("AI302KlingProvider not available - check AI302_KLING_API_KEY or AI302_API_KEY")
 
         # 参数验证
         if not prompt:
@@ -459,7 +459,7 @@ class ThirtyTwoKlingProvider(BaseVideoProvider):
             dict: 任务状态信息
         """
         if not self.is_available():
-            raise ValueError("ThirtyTwoKlingProvider not available")
+            raise ValueError("AI302KlingProvider not available")
 
         headers = {
             "Authorization": f"Bearer {self.api_key}"
@@ -488,4 +488,4 @@ class ThirtyTwoKlingProvider(BaseVideoProvider):
 
 
 # 单例实例
-thirtytwo_kling_provider: ThirtyTwoKlingProvider = ThirtyTwoKlingProvider()
+ai302_kling_provider: AI302KlingProvider = AI302KlingProvider()

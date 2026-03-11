@@ -41,12 +41,13 @@ const IMAGE_MODEL_LABELS: Record<string, string> = {
 
 function shortLabel(vendor: string): string {
   const map: Record<string, string> = {
-    thirtytwo_nano_banana: 'Nano Banana',
-    thirtytwo_seedream: 'Seedream',
-    thirtytwo_kling: 'Kling',
+    '302ai_nano_banana': 'Nano Banana',
+    '302ai_seedream': 'Seedream',
+    '302ai_kling': 'Kling',
     zhipu: 'Zhipu',
     gemini: 'Gemini',
-    thirtytwo: '302.AI',
+    '302ai': '302.AI',
+    '302ai_gemini': '302.AI Gemini',
   };
   return map[vendor] ?? vendor;
 }

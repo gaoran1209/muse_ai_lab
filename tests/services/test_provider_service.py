@@ -42,7 +42,7 @@ class TestProviderRegistry:
 
     def test_get_video_provider_existing(self):
         """测试获取存在的 Video Provider"""
-        provider = ProviderRegistry.get_video_provider("thirtytwo_kling")
+        provider = ProviderRegistry.get_video_provider("302ai_kling")
         assert provider is not None
         assert provider.model_name is not None
 
@@ -219,11 +219,11 @@ class TestParamFiltering:
         assert "temperature" not in filtered
         assert "max_tokens" not in filtered
 
-    def test_llm_thirtytwo_filter_exposed_params(self):
-        """测试 thirtytwo LLM 参数过滤 - 无暴露参数"""
+    def test_llm_ai302_filter_exposed_params(self):
+        """测试 302.AI LLM 参数过滤 - 无暴露参数"""
         from src.backend.services.provider_service import ProviderRegistry
 
-        provider = ProviderRegistry.get_llm_provider("thirtytwo")
+        provider = ProviderRegistry.get_llm_provider("302ai")
         service = get_service("llm")
 
         # 输入参数
@@ -235,7 +235,7 @@ class TestParamFiltering:
 
         filtered = service._filter_exposed_params(provider, params)
 
-        # 应该为空，因为 thirtytwo LLM 没有暴露参数
+        # 应该为空，因为 302.AI LLM 没有暴露参数
         assert len(filtered) == 0
 
     def test_image_gemini_filter_exposed_params(self):
@@ -264,10 +264,10 @@ class TestParamFiltering:
         assert "internal_only" not in filtered
 
     def test_video_kling_filter_exposed_params(self):
-        """测试 thirtytwo_kling Video 参数过滤"""
+        """测试 302ai_kling Video 参数过滤"""
         from src.backend.services.provider_service import ProviderRegistry
 
-        provider = ProviderRegistry.get_video_provider("thirtytwo_kling")
+        provider = ProviderRegistry.get_video_provider("302ai_kling")
         service = get_service("video")
 
         # 输入参数包含暴露和未暴露的参数

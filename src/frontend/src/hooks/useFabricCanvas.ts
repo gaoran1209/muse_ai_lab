@@ -75,11 +75,17 @@ export function useFabricCanvas(
 
     const getAnchorFromObject = (activeObject: {
       getBoundingRect: () => { left: number; top: number; width: number; height: number };
+      get?: (key: string) => unknown;
+      getObjectScaling?: () => { x: number; y: number };
     }) => {
       const bounds = activeObject.getBoundingRect();
+      const data = (activeObject.get?.('data') as Record<string, unknown> | undefined) ?? {};
+      const anchorOffsetTop = typeof data.toolbarAnchorOffsetTop === 'number' ? data.toolbarAnchorOffsetTop : 0;
+      const objectScaleY = activeObject.getObjectScaling?.().y ?? 1;
+      const anchorYOffset = anchorOffsetTop * objectScaleY * canvas.getZoom();
       return {
         x: bounds.left + bounds.width / 2,
-        y: bounds.top,
+        y: bounds.top + anchorYOffset,
       };
     };
 
