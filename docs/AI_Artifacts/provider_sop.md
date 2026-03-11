@@ -27,8 +27,7 @@
 
 ### 2.2 Image
 
-- `src/backend/providers/image/thirtytwo_nano_banana.py`
-- `src/backend/providers/image/thirtytwo_seedream.py`
+- `src/backend/providers/image/gemini.py`
 
 ### 2.3 Video
 
@@ -43,13 +42,13 @@
 ```python
 GEMINI_API_KEY
 GEMINI_MODEL_NAME
+GEMINI_IMAGE_MODEL
 
 ZHIPU_API_KEY
 ZHIPU_MODEL_NAME
 
 THIRTYTWO_API_KEY
 THIRTYTWO_LLM_MODEL
-THIRTYTWO_IMAGE_MODEL
 THIRTYTWO_VIDEO_MODEL
 ```
 

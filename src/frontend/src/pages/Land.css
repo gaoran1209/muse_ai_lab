@@ -1,0 +1,66 @@
+.land-page {
+  min-height: 100vh;
+  padding: 32px 24px 48px;
+  background:
+    radial-gradient(circle at top left, rgba(244, 196, 48, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.14), transparent 24%),
+    linear-gradient(180deg, #fcfaf7 0%, #f4f7fb 100%);
+}
+
+.land-page-shell {
+  width: min(1280px, 100%);
+  margin: 0 auto;
+}
+
+.land-feed-header.land-section-card {
+  padding: 28px;
+}
+
+.land-feed-masonry {
+  column-count: 4;
+  column-gap: 20px;
+  margin-top: 28px;
+}
+
+.land-feed-state {
+  margin-top: 24px;
+  padding: 28px;
+  text-align: center;
+  color: #475467;
+}
+
+.land-feed-footer {
+  display: flex;
+  justify-content: center;
+  margin-top: 26px;
+}
+
+.land-feed-load-more {
+  min-width: 200px;
+}
+
+@media (max-width: 1180px) {
+  .land-feed-masonry {
+    column-count: 3;
+  }
+}
+
+@media (max-width: 860px) {
+  .land-page {
+    padding: 20px 14px 36px;
+  }
+
+  .land-feed-header.land-section-card {
+    padding: 22px;
+  }
+
+  .land-feed-masonry {
+    column-count: 2;
+  }
+}
+
+@media (max-width: 560px) {
+  .land-feed-masonry {
+    column-count: 1;
+  }
+}

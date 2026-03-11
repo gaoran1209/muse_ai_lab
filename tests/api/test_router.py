@@ -116,9 +116,10 @@ class TestImageAPI:
         response = client.post(
             "/api/v1/image/generate",
             json={
-                "vendor": "thirtytwo_nano_banana",
+                "vendor": "gemini",
                 "prompt": "a cute cat",
                 "parameters": {
+                    "model_name": "gemini-3.1-flash-image-preview",
                     "resolution": "2k",
                     "aspect_ratio": "16:9",
                 },

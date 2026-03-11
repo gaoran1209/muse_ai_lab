@@ -34,6 +34,11 @@ interface Props {
 
 // ==================== 工具函数 ====================
 
+const IMAGE_MODEL_LABELS: Record<string, string> = {
+  'gemini-3.1-flash-image-preview': 'Nano Banana 2',
+  'gemini-3-pro-image-preview': 'Nano Banana Pro',
+};
+
 function shortLabel(vendor: string): string {
   const map: Record<string, string> = {
     thirtytwo_nano_banana: 'Nano Banana',
@@ -44,6 +49,13 @@ function shortLabel(vendor: string): string {
     thirtytwo: '302.AI',
   };
   return map[vendor] ?? vendor;
+}
+
+function choiceLabel(param: ExposedParam, value: unknown): string {
+  if (param.name === 'model_name') {
+    return IMAGE_MODEL_LABELS[String(value)] ?? String(value);
+  }
+  return String(value);
 }
 
 // ==================== 参数渲染 ====================
@@ -69,7 +81,7 @@ function ParamField({
           onChange={(e) => onChange(e.target.value)}
         >
           {param.choices.map((c) => (
-            <option key={c} value={c}>{c}</option>
+            <option key={c} value={c}>{choiceLabel(param, c)}</option>
           ))}
         </select>
       </div>
@@ -185,6 +197,7 @@ export function ImageActionPanel({ anchor, onClose, onImageGenerated }: Props) {
 
   const currentProviders = mode === 'image' ? imageProviders : videoProviders;
   const currentProvider = currentProviders.find((p) => p.vendor === selectedVendor);
+  const showVendorField = !(mode === 'image' && currentProviders.length === 1 && currentProviders[0]?.vendor === 'gemini');
 
   // 处理参数中的 list[str] 类型（从逗号字符串转为数组）
   function buildRequestParams(): Record<string, unknown> {
@@ -291,21 +304,23 @@ export function ImageActionPanel({ anchor, onClose, onImageGenerated }: Props) {
 
       <div className="panel-body">
         {/* 厂商选择 */}
-        <div className="panel-field">
-          <label className="panel-label">厂商</label>
-          <select
-            className="panel-select"
-            value={selectedVendor}
-            onChange={(e) => setSelectedVendor(e.target.value)}
-            disabled={currentProviders.length === 0}
-          >
-            {currentProviders.map((p) => (
-              <option key={p.vendor} value={p.vendor}>
-                {shortLabel(p.vendor)}
-              </option>
-            ))}
-          </select>
-        </div>
+        {showVendorField && (
+          <div className="panel-field">
+            <label className="panel-label">厂商</label>
+            <select
+              className="panel-select"
+              value={selectedVendor}
+              onChange={(e) => setSelectedVendor(e.target.value)}
+              disabled={currentProviders.length === 0}
+            >
+              {currentProviders.map((p) => (
+                <option key={p.vendor} value={p.vendor}>
+                  {shortLabel(p.vendor)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* 提示词 */}
         <div className="panel-field">

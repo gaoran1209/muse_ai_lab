@@ -1,133 +1,187 @@
 """
-Generation, publish, and Land interaction services.
+Shot generation service for Spark.
 """
 
 from __future__ import annotations
 
-from src.backend.database import get_demo_store
-from src.backend.models import new_id, utc_now_iso
-from src.backend.schemas import ContentMetrics, ContentRecord, GenerateShotRequest, PublishContentRequest, ShotRecord, TryOnRecord, TryOnRequest
-from src.backend.services.canvas_service import ProjectService
-from src.backend.services.provider_service import ImageService
+from datetime import UTC, datetime
+
+from sqlalchemy.orm import Session, selectinload
+
+from src.backend.database import SessionLocal
+from src.backend.logger import get_logger
+from src.backend.models import Look, LookItem, Shot
+from src.backend.schemas import ShotAdoptRequest, ShotGenerateRequest, ShotGenerateResponse, ShotResponse
+from src.backend.services._helpers import (
+    DEFAULT_IMAGE_VENDOR,
+    DEFAULT_VIDEO_VENDOR,
+    TRANSPARENT_PIXEL_DATA_URL,
+    dumps_json,
+    image_data_url,
+    shot_to_response,
+    video_data_url,
+)
+from src.backend.services.outfit_service import OutfitService
+from src.backend.services.prompt_templates import render_shooting_prompt
+from src.backend.services.provider_service import ImageService, VideoService
+
+logger = get_logger(__name__)
+
+MODEL_PRESETS = {
+    "model_01": "亚洲女性模特，利落短发，168cm，适合都市时装内容。",
+    "model_02": "欧洲男性模特，185cm，冷静商业时尚风格。",
+    "model_03": "中性模特，极简高级感造型，适合品牌视觉。",
+}
+
+SCENE_PRESETS = {
+    "scene_01": "城市街拍，自然光，轻微动态，适合通勤风。",
+    "scene_02": "白色摄影棚，柔光，正面站姿，适合电商主图。",
+    "scene_03": "室内生活方式场景，暖色灯光，适合内容社区分发。",
+}
 
 
 class GenerationService:
     @staticmethod
-    def generate_shot(project_id: str, board_id: str, payload: GenerateShotRequest) -> ShotRecord:
-        project = ProjectService.get_project(project_id)
-        board = next((item for item in project.boards if item.id == board_id), None)
-        if board is None:
-            raise KeyError(board_id)
-
-        image_url = next((slot.image_url for slot in board.slots if slot.image_url), None) or "/example.png"
-        source_vendor = payload.vendor or "mock"
-
-        if payload.vendor:
-            result = ImageService.generate(vendor=payload.vendor, prompt=payload.prompt, return_format="base64")
-            if result.get("success") and result.get("content"):
-                image_url = f"data:image/png;base64,{result['content']}"
-                source_vendor = payload.vendor
-
-        shot = ShotRecord(
-            id=new_id("shot"),
-            project_id=project_id,
-            board_id=board_id,
-            title=f"{board.name} Hero",
-            prompt=payload.prompt,
-            image_url=image_url,
-            source_vendor=source_vendor,
-            status="completed",
-            adopted=False,
-            created_at=utc_now_iso(),
+    def list_project_shots(db: Session, project_id: str) -> list[ShotResponse]:
+        OutfitService._get_project(db, project_id)
+        shots = (
+            db.query(Shot)
+            .join(Look, Shot.look_id == Look.id)
+            .filter(Look.project_id == project_id)
+            .order_by(Shot.created_at.desc())
+            .all()
         )
-        return ProjectService.save_shot(project_id, shot)
+        return [shot_to_response(shot) for shot in shots]
 
     @staticmethod
-    def adopt_shot(project_id: str, shot_id: str, adopted: bool) -> ShotRecord:
-        return ProjectService.update_shot(project_id, shot_id, adopted=adopted)
-
-
-class LandService:
-    @staticmethod
-    def list_feed() -> list[ContentRecord]:
-        snapshot = get_demo_store().read()
-        return sorted(snapshot.contents, key=lambda item: item.published_at, reverse=True)
+    def _get_look(db: Session, look_id: str) -> Look:
+        return OutfitService.get_look(db, look_id)
 
     @staticmethod
-    def publish_content(project_id: str, board_id: str, payload: PublishContentRequest) -> ContentRecord:
-        def mutator(snapshot):
-            project = next((item for item in snapshot.projects if item.id == project_id), None)
-            if project is None:
-                raise KeyError(project_id)
-            board = next((item for item in project.boards if item.id == board_id), None)
-            if board is None:
-                raise KeyError(board_id)
+    def _preset_description(action: str, preset_id: str | None) -> str | None:
+        if not preset_id:
+            return None
+        if action == "change_model":
+            return MODEL_PRESETS.get(preset_id)
+        if action == "change_background":
+            return SCENE_PRESETS.get(preset_id)
+        return MODEL_PRESETS.get(preset_id) or SCENE_PRESETS.get(preset_id)
 
-            selected_shot_ids = payload.shot_ids or [
-                shot.id for shot in project.shots if shot.board_id == board_id and shot.adopted
-            ]
-            selected_shots = [shot for shot in project.shots if shot.id in selected_shot_ids]
-            if not selected_shots:
-                raise ValueError("No adopted shots available for publishing.")
+    @staticmethod
+    def _build_prompt(look: Look, payload: ShotGenerateRequest) -> str:
+        preset_description = GenerationService._preset_description(payload.action, payload.preset_id)
+        return render_shooting_prompt(
+            action=payload.action,
+            look_name=look.name,
+            look_description=look.description,
+            preset_description=preset_description,
+            custom_prompt=payload.custom_prompt,
+            reference_image_url=payload.reference_image_url,
+        )
 
-            content = ContentRecord(
-                id=new_id("content"),
-                project_id=project_id,
-                board_id=board_id,
-                shot_ids=[shot.id for shot in selected_shots],
-                title=payload.title.strip(),
-                description=payload.description.strip(),
-                tags=payload.tags or board.tags,
-                cover_url=selected_shots[0].image_url,
-                published_at=utc_now_iso(),
-                metrics=ContentMetrics(),
+    @staticmethod
+    def create_shot(db: Session, look_id: str, payload: ShotGenerateRequest) -> ShotGenerateResponse:
+        look = GenerationService._get_look(db, look_id)
+        if payload.action == "tryon" and not payload.reference_image_url:
+            raise ValueError("reference_image_url is required when action=tryon")
+
+        vendor = payload.vendor or (
+            DEFAULT_VIDEO_VENDOR if payload.type == "video" else DEFAULT_IMAGE_VENDOR
+        )
+        prompt = GenerationService._build_prompt(look, payload)
+        shot = Shot(
+            look_id=look.id,
+            type=payload.type,
+            prompt=prompt,
+            parameters=dumps_json(
+                {
+                    "action": payload.action,
+                    "preset_id": payload.preset_id,
+                    "reference_image_url": payload.reference_image_url,
+                    "parameters": payload.parameters,
+                }
+            ),
+            vendor=vendor,
+            status="queued",
+            adopted=False,
+            canvas_position=dumps_json({"x": 420, "y": 180}),
+        )
+        db.add(shot)
+        db.commit()
+        db.refresh(shot)
+        return ShotGenerateResponse(shot_id=shot.id, status=shot.status)
+
+    @staticmethod
+    def process_shot(shot_id: str) -> None:
+        db = SessionLocal()
+        try:
+            shot = (
+                db.query(Shot)
+                .options(selectinload(Shot.look).selectinload(Look.items).selectinload(LookItem.asset))
+                .filter(Shot.id == shot_id)
+                .first()
             )
-            snapshot.contents.insert(0, content)
-            board.status = "published"
-            project.updated_at = utc_now_iso()
-            return content
+            if shot is None:
+                return
 
-        return get_demo_store().mutate(mutator)
+            shot.status = "processing"
+            db.commit()
+
+            payload = shot.prompt or ""
+            params = (shot_to_response(shot).parameters or {}).get("parameters", {})
+
+            if shot.type == "video":
+                result = VideoService.generate(shot.vendor or DEFAULT_VIDEO_VENDOR, payload, **params)
+                if result.get("success"):
+                    shot.url = video_data_url(result.get("content"))
+                    shot.thumbnail_url = TRANSPARENT_PIXEL_DATA_URL
+                    shot.status = "completed"
+                else:
+                    shot.status = "failed"
+            else:
+                params = dict(params)
+                meta = shot_to_response(shot).parameters or {}
+                reference_image_url = meta.get("reference_image_url")
+                if reference_image_url:
+                    params.setdefault("images", [reference_image_url])
+                result = ImageService.generate(shot.vendor or DEFAULT_IMAGE_VENDOR, payload, **params)
+                if result.get("success"):
+                    shot.url = image_data_url(result.get("content"))
+                    shot.thumbnail_url = shot.url
+                    shot.status = "completed"
+                else:
+                    logger.warning("Image generation failed for shot %s, using fallback image.", shot.id)
+                    fallback = next(
+                        (item.asset.url for item in shot.look.items if item.asset and item.asset.url),
+                        TRANSPARENT_PIXEL_DATA_URL,
+                    )
+                    shot.url = fallback
+                    shot.thumbnail_url = fallback
+                    shot.status = "completed"
+
+            db.commit()
+        except Exception:
+            logger.exception("Failed to process shot %s", shot_id)
+            shot = db.query(Shot).filter(Shot.id == shot_id).first()
+            if shot is not None:
+                shot.status = "failed"
+                db.commit()
+        finally:
+            db.close()
 
     @staticmethod
-    def like_content(content_id: str) -> ContentRecord:
-        def mutator(snapshot):
-            content = next((item for item in snapshot.contents if item.id == content_id), None)
-            if content is None:
-                raise KeyError(content_id)
-            content.metrics.likes += 1
-            return content
-
-        return get_demo_store().mutate(mutator)
+    def get_shot(db: Session, shot_id: str) -> ShotResponse:
+        shot = db.query(Shot).filter(Shot.id == shot_id).first()
+        if shot is None:
+            raise KeyError(shot_id)
+        return shot_to_response(shot)
 
     @staticmethod
-    def bookmark_content(content_id: str) -> ContentRecord:
-        def mutator(snapshot):
-            content = next((item for item in snapshot.contents if item.id == content_id), None)
-            if content is None:
-                raise KeyError(content_id)
-            content.metrics.bookmarks += 1
-            return content
-
-        return get_demo_store().mutate(mutator)
-
-    @staticmethod
-    def create_try_on(content_id: str, payload: TryOnRequest) -> TryOnRecord:
-        def mutator(snapshot):
-            content = next((item for item in snapshot.contents if item.id == content_id), None)
-            if content is None:
-                raise KeyError(content_id)
-            content.metrics.try_on_requests += 1
-            record = TryOnRecord(
-                id=new_id("tryon"),
-                content_id=content_id,
-                image_url=payload.image_url,
-                result_image_url=content.cover_url,
-                note=payload.note,
-                status="completed",
-                created_at=utc_now_iso(),
-            )
-            snapshot.try_on_requests.insert(0, record)
-            return record
-
-        return get_demo_store().mutate(mutator)
+    def adopt_shot(db: Session, shot_id: str, payload: ShotAdoptRequest) -> ShotResponse:
+        shot = db.query(Shot).filter(Shot.id == shot_id).first()
+        if shot is None:
+            raise KeyError(shot_id)
+        shot.adopted = payload.adopted
+        db.commit()
+        db.refresh(shot)
+        return shot_to_response(shot)

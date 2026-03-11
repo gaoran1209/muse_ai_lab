@@ -13,21 +13,19 @@ LLM Provider 模块
 
 支持的提供商:
 
-    1. Zhipu AI (智谱)
+    1. 302.AI (默认服务商，模型聚合平台)
+       - API: https://api.302.ai/v1/chat/completions
+       - 模型: gemini-3.1-flash-lite-preview (多模态 LLM)
+       - 特性: OpenAI 兼容格式，统一 API 接入
+
+    2. Gemini (Google 直连)
+       - 模型: gemini-3.1-flash-lite-preview (多模态 LLM)
+       - 特性: 支持 thinking_level 深度思考模式（仅 gemini-3 系列）
+
+    3. Zhipu AI (智谱)
        - 模型: glm-4.7-flash, glm-4.7, glm-4-plus, glm-z1-plus 等
        - 特性: 支持 thinking_enabled 深度思考模式
        - 推荐: glm-4.7-flash (免费额度较高)
-
-    2. Gemini (Google)
-       - 模型: gemini-2.5-flash, gemini-3-flash-preview, gemini-3.1-pro-preview 等
-       - 特性: 支持 thinking_level 深度思考模式（仅 gemini-3 系列）
-       - 推荐: gemini-2.5-flash (免费额度较高)
-
-    3. 302.AI (模型聚合平台)
-       - 平台: https://302.ai
-       - 模型: 支持 Gemini、GPT、Claude、智谱等多种模型
-       - 特性: OpenAI 兼容格式，统一 API 接入
-       - 推荐: gemini-2.5-flash (通过 302.AI 调用)
 
 模块结构:
     llm/
@@ -35,7 +33,7 @@ LLM Provider 模块
     ├── base.py         # BaseLLMProvider 抽象基类
     ├── zhipu.py        # ZhipuProvider 实现
     ├── gemini.py       # GeminiProvider 实现
-    └── thirtytwo.py    # ThirtyTwoProvider 实现
+    └── thirtytwo.py    # ThirtyTwoProvider 实现（默认）
 """
 
 from .base import BaseLLMProvider

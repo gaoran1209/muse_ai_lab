@@ -1,7 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './BottomPromptBar.css';
-
-// ==================== 类型定义 ====================
 
 type Mode = 'image' | 'video';
 
@@ -24,13 +22,32 @@ interface ProviderInfo {
   };
 }
 
+export interface PromptSelection {
+  id: string;
+  label: string;
+  kind: string;
+  prompt: string;
+  mode?: Mode | null;
+  helper?: string;
+}
+
 interface Props {
   onImageGenerated: (base64: string) => void;
   onVideoGenerated: (base64: string) => void;
   selectedImageDataUrl?: string | null;
+  selectedImageUrl?: string | null;
+  selection?: PromptSelection | null;
+  onSelectionPromptChange?: (prompt: string) => void;
+  onClearSelection?: () => void;
 }
 
-// ==================== 工具 ====================
+const IMAGE_MODEL_LABELS: Record<string, string> = {
+  'gemini-3.1-flash-image-preview': 'Nano Banana 2',
+  'gemini-3-pro-image-preview': 'Nano Banana Pro',
+  'imagen-4.0-fast-generate-001': 'Imagen 4.0 Fast',
+  'imagen-4.0-generate-001': 'Imagen 4.0',
+  'imagen-4.0-ultra-generate-001': 'Imagen 4.0 Ultra',
+};
 
 function shortLabel(vendor: string): string {
   const map: Record<string, string> = {
@@ -44,25 +61,29 @@ function shortLabel(vendor: string): string {
   return map[vendor] ?? vendor;
 }
 
+function choiceLabel(param: ExposedParam, value: unknown): string {
+  if (param.name === 'model_name') {
+    return IMAGE_MODEL_LABELS[String(value)] ?? String(value);
+  }
+  return String(value);
+}
+
 function paramLabel(p: ExposedParam): string {
   return p.description || p.name;
 }
 
-/** chip 上显示的值（简短） */
 function chipDisplay(p: ExposedParam, val: unknown): string {
   if (val === null || val === undefined || val === '') {
     return p.description || p.name;
   }
-  return String(val);
+  return choiceLabel(p, val);
 }
 
-/** 判断参数是否为图片类型（通过画布选中传入，前端不显示 chip） */
 function isImageParam(param: ExposedParam): boolean {
   const name = param.name.toLowerCase();
   return name === 'image' || name === 'images';
 }
 
-/** 将 data URL 转为 File 对象 */
 function dataUrlToFile(dataUrl: string, filename: string): File {
   const [header, base64] = dataUrl.split(',');
   const mime = header.match(/:(.*?);/)?.[1] || 'image/png';
@@ -72,7 +93,6 @@ function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([arr], filename, { type: mime });
 }
 
-/** 上传图片文件到 OSS，返回 URL */
 async function uploadImageToOSS(file: File): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);
@@ -82,9 +102,15 @@ async function uploadImageToOSS(file: File): Promise<string> {
   return data.url as string;
 }
 
-// ==================== 主组件 ====================
-
-export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedImageDataUrl }: Props) {
+export function BottomPromptBar({
+  onImageGenerated,
+  onVideoGenerated,
+  selectedImageDataUrl,
+  selectedImageUrl,
+  selection,
+  onSelectionPromptChange,
+  onClearSelection,
+}: Props) {
   const [mode, setMode] = useState<Mode>('image');
   const [imageProviders, setImageProviders] = useState<ProviderInfo[]>([]);
   const [videoProviders, setVideoProviders] = useState<ProviderInfo[]>([]);
@@ -96,7 +122,6 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
   const [openChip, setOpenChip] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 获取 Provider 列表
   useEffect(() => {
     Promise.all([
       fetch('/api/v1/image/providers').then((r) => r.json()),
@@ -125,20 +150,36 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
 
   useEffect(() => {
     const providers = mode === 'image' ? imageProviders : videoProviders;
-    const p = providers.find((p) => p.vendor === selectedVendor);
-    if (p) setParams(buildDefaults(p));
+    const provider = providers.find((item) => item.vendor === selectedVendor);
+    if (provider) {
+      setParams(buildDefaults(provider));
+    }
     setOpenChip(null);
   }, [selectedVendor]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function buildDefaults(p: ProviderInfo): Record<string, unknown> {
+  useEffect(() => {
+    if (!selection) return;
+    setPrompt(selection.prompt ?? '');
+    if (selection.mode) {
+      setMode(selection.mode);
+    }
+    setError(null);
+    requestAnimationFrame(() => {
+      if (!textareaRef.current) return;
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    });
+  }, [selection?.id, selection?.prompt, selection?.mode]);
+
+  function buildDefaults(provider: ProviderInfo): Record<string, unknown> {
     return Object.fromEntries(
-      p.info.exposed_params
-        .filter((ep) => !isImageParam(ep))
-        .map((ep) => [ep.name, ep.default ?? ''])
+      provider.info.exposed_params
+        .filter((param) => !isImageParam(param))
+        .map((param) => [param.name, param.default ?? ''])
     );
   }
 
-  function buildRequestParams(): Record<string, unknown> {
+  function buildRequestParams(currentProvider: ProviderInfo | undefined): Record<string, unknown> {
     if (!currentProvider) return {};
     const result: Record<string, unknown> = {};
     for (const param of currentProvider.info.exposed_params) {
@@ -151,23 +192,27 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
   }
 
   const currentProviders = mode === 'image' ? imageProviders : videoProviders;
-  const currentProvider = currentProviders.find((p) => p.vendor === selectedVendor);
+  const currentProvider = currentProviders.find((provider) => provider.vendor === selectedVendor);
   const exposedParams = currentProvider?.info.exposed_params ?? [];
-  // 过滤掉图片参数（后端处理）
-  const visibleParams = exposedParams.filter((p) => !isImageParam(p));
+  const visibleParams = exposedParams.filter((param) => !isImageParam(param));
+  const showVendorChip = !(mode === 'image' && currentProviders.length === 1 && currentProviders[0]?.vendor === 'gemini');
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      handleGenerate();
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      void handleGenerate();
     }
   };
 
-  const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setPrompt(e.target.value);
-    const el = e.target;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  const handleTextareaInput = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextPrompt = event.target.value;
+    setPrompt(nextPrompt);
+    if (selection) {
+      onSelectionPromptChange?.(nextPrompt);
+    }
+    const element = event.target;
+    element.style.height = 'auto';
+    element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
   };
 
   async function handleGenerate() {
@@ -176,20 +221,15 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
     setError(null);
 
     try {
-      const requestParams = buildRequestParams();
+      const requestParams = buildRequestParams(currentProvider);
 
-      // 如果有选中的画布图片，上传到 OSS 并注入到 image 参数
-      if (selectedImageDataUrl) {
-        const file = dataUrlToFile(selectedImageDataUrl, `canvas_${Date.now()}.png`);
-        const url = await uploadImageToOSS(file);
-        // 查找当前 provider 的图片参数名
-        const imageParam = exposedParams.find((p) => isImageParam(p));
+      if (selectedImageDataUrl || selectedImageUrl) {
+        const url = selectedImageDataUrl
+          ? await uploadImageToOSS(dataUrlToFile(selectedImageDataUrl, `canvas_${Date.now()}.png`))
+          : selectedImageUrl!;
+        const imageParam = exposedParams.find((param) => isImageParam(param));
         if (imageParam) {
-          if (imageParam.type.includes('list')) {
-            requestParams[imageParam.name] = [url];
-          } else {
-            requestParams[imageParam.name] = url;
-          }
+          requestParams[imageParam.name] = imageParam.type.includes('list') ? [url] : url;
         }
       }
 
@@ -204,14 +244,19 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
         }),
       });
       const data = await resp.json();
-      if (data.success) {
-        if (mode === 'image') {
-          onImageGenerated(data.content as string);
-        } else {
-          onVideoGenerated(data.content as string);
-        }
-      } else {
+      if (!data.success) {
         setError(data.error || '生成失败');
+        return;
+      }
+
+      if (selection) {
+        onSelectionPromptChange?.(prompt.trim());
+      }
+
+      if (mode === 'image') {
+        onImageGenerated(data.content as string);
+      } else {
+        onVideoGenerated(data.content as string);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '请求失败，请检查后端服务');
@@ -220,20 +265,18 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
     }
   }
 
-  /** 渲染单个参数 chip（统一入口） */
   function renderParamChip(param: ExposedParam) {
     const key = param.name;
     const val = params[key];
     const isOpen = openChip === key;
 
-    // 有 choices → 下拉选择
     if (param.choices && param.choices.length > 0) {
       return (
         <div key={key} className="chip-wrapper">
           <button
             className={`param-chip ${isOpen ? 'open' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               setOpenChip(isOpen ? null : key);
             }}
             title={param.description}
@@ -243,30 +286,32 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
               <path d="M2 3.5l3 3 3-3" strokeLinecap="round" />
             </svg>
           </button>
-          {isOpen && (
+          {isOpen ? (
             <div className="chip-dropdown">
-              {param.choices.map((c) => (
+              {param.choices.map((choice) => (
                 <button
-                  key={String(c)}
-                  className={`chip-option ${String(val) === String(c) ? 'selected' : ''}`}
+                  key={String(choice)}
+                  className={`chip-option ${String(val) === String(choice) ? 'selected' : ''}`}
                   onClick={() => {
                     const parsed =
-                      param.type === 'int' ? parseInt(String(c), 10) :
-                      param.type === 'float' ? parseFloat(String(c)) : c;
+                      param.type === 'int'
+                        ? parseInt(String(choice), 10)
+                        : param.type === 'float'
+                          ? parseFloat(String(choice))
+                          : choice;
                     setParams((prev) => ({ ...prev, [key]: parsed }));
                     setOpenChip(null);
                   }}
                 >
-                  {String(c)}
+                  {choiceLabel(param, choice)}
                 </button>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
       );
     }
 
-    // bool → 切换 chip
     if (param.type === 'bool') {
       return (
         <button
@@ -281,13 +326,12 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
       );
     }
 
-    // str / int / float → 可编辑 chip（点击展开 inline input）
     return (
       <div key={key} className="chip-wrapper">
         <button
           className={`param-chip ${isOpen ? 'open' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
+          onClick={(event) => {
+            event.stopPropagation();
             setOpenChip(isOpen ? null : key);
           }}
           title={param.description}
@@ -297,7 +341,7 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
             <path d="M6 2L4 8" strokeLinecap="round" />
           </svg>
         </button>
-        {isOpen && (
+        {isOpen ? (
           <div className="chip-dropdown chip-input-dropdown">
             <label className="chip-input-label">{paramLabel(param)}</label>
             <input
@@ -306,51 +350,68 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
               value={String(val ?? '')}
               placeholder={String(param.default ?? '')}
               autoFocus
-              onChange={(e) => {
-                const v =
-                  param.type === 'int' ? parseInt(e.target.value, 10) :
-                  param.type === 'float' ? parseFloat(e.target.value) :
-                  e.target.value;
-                setParams((prev) => ({ ...prev, [key]: v }));
+              onChange={(event) => {
+                const rawValue = event.target.value;
+                const nextValue =
+                  param.type === 'int'
+                    ? parseInt(rawValue, 10)
+                    : param.type === 'float'
+                      ? parseFloat(rawValue)
+                      : rawValue;
+                setParams((prev) => ({ ...prev, [key]: Number.isNaN(nextValue) ? '' : nextValue }));
               }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setOpenChip(null);
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') setOpenChip(null);
               }}
             />
           </div>
-        )}
+        ) : null}
       </div>
     );
   }
 
   return (
     <div className="bottom-prompt-bar" onClick={() => setOpenChip(null)}>
-      {/* 选中图片缩略图 */}
-      {selectedImageDataUrl && (
-        <div className="selected-image-row">
-          <img src={selectedImageDataUrl} alt="选中图片" className="selected-image-thumb" />
-          <span className="selected-image-label">已选中参考图片</span>
+      {selection ? (
+        <div className="selection-context-row">
+          <div className="selection-context-copy">
+            <span className="selection-context-kicker">{selection.kind}</span>
+            <strong>{selection.label}</strong>
+            {selection.helper ? <em>{selection.helper}</em> : null}
+          </div>
+          <button type="button" className="selection-clear-button" onClick={onClearSelection}>
+            关闭
+          </button>
         </div>
-      )}
+      ) : null}
 
-      {/* 输入区域 */}
+      {selectedImageDataUrl || selectedImageUrl ? (
+        <div className="selected-image-row">
+          <img
+            src={selectedImageDataUrl ?? selectedImageUrl ?? ''}
+            alt="选中图片"
+            className="selected-image-thumb"
+          />
+          <span className="selected-image-label">
+            {selection ? '当前对象会引用已选中的参考图' : '已选中参考图片'}
+          </span>
+        </div>
+      ) : null}
+
       <textarea
         ref={textareaRef}
         className="prompt-textarea"
         value={prompt}
         onChange={handleTextareaInput}
         onKeyDown={handleKeyDown}
-        placeholder="描述任何你想要生成的内容..."
+        placeholder={selection ? '编辑当前对象的 prompt...' : 'Describe anything you want to generate'}
         rows={2}
       />
 
-      {/* 错误提示 */}
-      {error && <div className="bar-error">{error}</div>}
+      {error ? <div className="bar-error">{error}</div> : null}
 
-      {/* 控制栏 */}
-      <div className="prompt-controls" onClick={(e) => e.stopPropagation()}>
+      <div className="prompt-controls" onClick={(event) => event.stopPropagation()}>
         <div className="controls-left">
-          {/* 模式切换 */}
           <div className="mode-tabs">
             <button
               className={`mode-tab ${mode === 'image' ? 'active' : ''}`}
@@ -361,7 +422,7 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
                 <circle cx="9" cy="9" r="2" fill="currentColor" stroke="none" />
                 <path d="M21 15l-5-5L5 21" strokeLinecap="round" />
               </svg>
-              图片生成
+              图片
             </button>
             <button
               className={`mode-tab ${mode === 'video' ? 'active' : ''}`}
@@ -370,19 +431,18 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none" />
               </svg>
-              视频生成
+              视频
             </button>
           </div>
 
           <div className="controls-divider" />
 
-          {/* 厂商 chip */}
-          {currentProviders.length > 0 && (
+          {showVendorChip && currentProviders.length > 0 ? (
             <div className="chip-wrapper">
               <button
                 className={`param-chip vendor-chip ${openChip === '__vendor' ? 'open' : ''}`}
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={(event) => {
+                  event.stopPropagation();
                   setOpenChip(openChip === '__vendor' ? null : '__vendor');
                 }}
               >
@@ -395,35 +455,33 @@ export function BottomPromptBar({ onImageGenerated, onVideoGenerated, selectedIm
                   <path d="M2 3.5l3 3 3-3" strokeLinecap="round" />
                 </svg>
               </button>
-              {openChip === '__vendor' && (
+              {openChip === '__vendor' ? (
                 <div className="chip-dropdown">
-                  {currentProviders.map((p) => (
+                  {currentProviders.map((provider) => (
                     <button
-                      key={p.vendor}
-                      className={`chip-option ${p.vendor === selectedVendor ? 'selected' : ''}`}
+                      key={provider.vendor}
+                      className={`chip-option ${provider.vendor === selectedVendor ? 'selected' : ''}`}
                       onClick={() => {
-                        setSelectedVendor(p.vendor);
+                        setSelectedVendor(provider.vendor);
                         setOpenChip(null);
                       }}
                     >
-                      {shortLabel(p.vendor)}
+                      {shortLabel(provider.vendor)}
                     </button>
                   ))}
                 </div>
-              )}
+              ) : null}
             </div>
-          )}
+          ) : null}
 
-          {/* 非图片暴露参数 → chips */}
           {visibleParams.map((param) => renderParamChip(param))}
         </div>
 
-        {/* 右侧 */}
         <div className="controls-right">
-          <span className="prompt-hint">{'\u2318'} Enter</span>
+          <span className="prompt-hint">Ctrl / Cmd + Enter</span>
           <button
             className={`generate-btn ${loading ? 'loading' : ''}`}
-            onClick={handleGenerate}
+            onClick={() => void handleGenerate()}
             disabled={loading || !prompt.trim()}
             title="生成"
           >

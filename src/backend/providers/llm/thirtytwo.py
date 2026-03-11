@@ -1,21 +1,15 @@
-"""302.AI LLM 提供商
+"""302.AI LLM 提供商（默认服务商）
 
 302.AI 是一个 AI 模型聚合平台，提供 OpenAI 兼容格式的统一 API。
-支持 Gemini、GPT、Claude、智谱等多种模型。
 
-官方文档: https://302ai.apifox.cn/api-147522041
+API 地址: https://api.302.ai/v1/chat/completions
+API 文档: https://302ai.apifox.cn/343209599e0
 价格: https://302.ai/price
 
-可用模型列表（Gemini 系列）:
-    - gemini-2.5-flash                    # 快速响应版（推荐）
-    - gemini-2.5-pro                      # 专业版
-    - gemini-3-pro-preview                # 第三代专业版预览
-    - gemini-2.5-flash-preview-05-20      # Flash 预览版
-    - gemini-2.5-flash-lite-preview-06-17 # Flash 轻量版
-    - gemini-2.5-pro-preview-06-05        # Pro 预览版
-    - gemini-2.5-pro-preview-06-05-thinking # Pro 预览版（展示思考）
-
-更多模型请参考: https://doc.302.ai/147522041e0
+支持模型:
+    - gemini-3.1-flash-image-preview   # Nano Banana 2
+    - gemini-3-pro-image-preview       # Nano Banana Pro
+    - gemini-3.1-flash-lite-preview    # 多模态 LLM（默认）
 """
 
 from src.backend.config import config

@@ -121,11 +121,19 @@ class LookGenerateRequest(BaseModel):
     count: int = Field(default=2, ge=1, le=5)
 
 
+class LookItemUpdate(BaseModel):
+    asset_id: str | None = None
+    category: str
+    placeholder_desc: str | None = None
+    sort_order: int = Field(default=0, ge=0)
+
+
 class LookUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     style_tags: list[str] | None = None
     board_position: dict[str, Any] | None = None  # {x, y, width, height}
+    items: list[LookItemUpdate] | None = None
 
 
 class LookResponse(BaseModel):
@@ -152,6 +160,10 @@ class LookBrief(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class LookGenerateResponse(BaseModel):
+    looks: list[LookResponse]
+
+
 # ===========================================================================
 # Shot (generation result)
 # ===========================================================================
@@ -162,6 +174,7 @@ class ShotGenerateRequest(BaseModel):
     vendor: str | None = None
     preset_id: str | None = None
     custom_prompt: str | None = None
+    reference_image_url: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -172,6 +185,7 @@ class ShotAdoptRequest(BaseModel):
 class ShotResponse(BaseModel):
     id: str
     look_id: str
+    content_id: str | None
     type: str
     url: str | None
     thumbnail_url: str | None
@@ -193,7 +207,7 @@ class ShotResponse(BaseModel):
 class ContentPublishRequest(BaseModel):
     look_id: str
     shot_ids: list[str] = Field(default_factory=list)
-    title: str = Field(max_length=200)
+    title: str = Field(default="", max_length=200)
     description: str | None = None
     tags: list[str] = Field(default_factory=list)
 
@@ -227,9 +241,25 @@ class ContentBrief(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ContentDetailResponse(ContentResponse):
+    items: list[LookItemResponse] = Field(default_factory=list)
+    shots: list["ShotResponse"] = Field(default_factory=list)
+
+
 # ===========================================================================
 # Land interactions
 # ===========================================================================
+
+class InteractionToggleRequest(BaseModel):
+    user_identifier: str = Field(default="anonymous", max_length=100)
+
+
+class InteractionToggleResponse(BaseModel):
+    content_id: str
+    interaction_type: InteractionType
+    active: bool
+    count: int
+
 
 class CommentCreate(BaseModel):
     text: str = Field(min_length=1, max_length=500)
@@ -274,6 +304,7 @@ class TryOnResponse(BaseModel):
 class LandContentDetailResponse(ContentResponse):
     """Land 内容详情页响应，含搭配单品列表和互动状态。"""
     items: list[LookItemResponse] = Field(default_factory=list)
+    shots: list[ShotResponse] = Field(default_factory=list)
     comments: list[InteractionResponse] = Field(default_factory=list)
     user_liked: bool = False
     user_favorited: bool = False

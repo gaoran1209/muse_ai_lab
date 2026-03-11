@@ -1,22 +1,19 @@
 """Google Gemini LLM 提供商
 
-支持 Gemini 2.5、Gemini 3 等系列模型。
+支持 Gemini 系列模型，通过 Google AI SDK 直连。
 
-可用 LLM 模型列表:
-    - gemini-2.5-flash          # 快速响应，免费额度较高，不支持 thinking
-    - gemini-2.5-flash-lite     # 更快速的简化版
-    - gemini-2.5-pro            # 专业版（需要付费）
-    - gemini-2.0-flash          # 第二代快速版
-    - gemini-flash-latest       # 最新 flash 版本
-    - gemini-3-flash-preview    # 第三代 flash 预览版，支持 thinking
-    - gemini-3-pro-preview      # 第三代专业版预览，支持 thinking（需要付费）
-    - gemini-3.1-pro-preview    # 第三代增强专业版预览，支持 thinking（需要付费）
-    - gemini-3.1-flash-preview  # 第三代增强 flash 预览版
+支持的 LLM 模型:
+    - gemini-3.1-flash-lite-preview    # 多模态 LLM（默认）
+
+支持的图片模型（见 image/gemini.py）:
+    - gemini-3.1-flash-image-preview   # Nano Banana 2
+    - gemini-3-pro-image-preview       # Nano Banana Pro
+    - imagen-4.0-generate-001          # Imagen 4.0
+    - gemini-3.1-flash-lite-preview    # 多模态 LLM
 
 注意:
-    - 支持 thinking_level 的模型: gemini-3-flash-preview, gemini-3-pro-preview,
-      gemini-3.1-pro-preview 等 gemini-3 系列
-    - 免费套餐推荐: gemini-2.5-flash, gemini-flash-latest
+    - 支持 thinking_level 的模型: gemini-3 系列
+    - 也可使用 gemini-2.5-flash 等其他模型
 """
 
 from src.backend.config import config

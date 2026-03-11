@@ -31,7 +31,7 @@ class TestProviderRegistry:
 
     def test_get_image_provider_existing(self):
         """测试获取存在的 Image Provider"""
-        provider = ProviderRegistry.get_image_provider("thirtytwo_nano_banana")
+        provider = ProviderRegistry.get_image_provider("gemini")
         assert provider is not None
         assert provider.model_name is not None
 
@@ -238,30 +238,30 @@ class TestParamFiltering:
         # 应该为空，因为 thirtytwo LLM 没有暴露参数
         assert len(filtered) == 0
 
-    def test_image_nano_banana_filter_exposed_params(self):
-        """测试 thirtytwo_nano_banana Image 参数过滤"""
+    def test_image_gemini_filter_exposed_params(self):
+        """测试 gemini Image 参数过滤"""
         from src.backend.services.provider_service import ProviderRegistry
 
-        provider = ProviderRegistry.get_image_provider("thirtytwo_nano_banana")
+        provider = ProviderRegistry.get_image_provider("gemini")
         service = get_service("image")
 
         # 输入参数包含暴露和未暴露的参数
         params = {
             "images": ["url1"],  # 暴露
+            "model_name": "gemini-3-pro-image-preview",  # 暴露
             "resolution": "2k",  # 暴露
             "aspect_ratio": "16:9",  # 暴露
-            "enable_base64_output": True,  # 未暴露
-            "enable_sync_mode": True,  # 未暴露
+            "internal_only": True,  # 未暴露
         }
 
         filtered = service._filter_exposed_params(provider, params)
 
         # 应该只包含暴露的参数
         assert "images" in filtered
+        assert "model_name" in filtered
         assert "resolution" in filtered
         assert "aspect_ratio" in filtered
-        assert "enable_base64_output" not in filtered
-        assert "enable_sync_mode" not in filtered
+        assert "internal_only" not in filtered
 
     def test_video_kling_filter_exposed_params(self):
         """测试 thirtytwo_kling Video 参数过滤"""

@@ -72,7 +72,7 @@ export default function Home() {
                 </svg>
               </div>
               <h3 className="feature-title">图像生成</h3>
-              <p className="feature-description">Nano Banana、Seedream 模型，高质量图像生成</p>
+              <p className="feature-description">Nano Banana 2 / Pro，高质量图像生成</p>
             </div>
             <div className="feature-card">
               <div className="feature-icon feature-icon-video">

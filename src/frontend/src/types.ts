@@ -147,8 +147,8 @@ export const COLORS = {
 
 /** 画布尺寸限制 */
 export const LIMITS = {
-  minZoom: 0.1,
-  maxZoom: 5,
+  minZoom: 0.5,
+  maxZoom: 2,
   defaultFontSize: 16,
   minTextWidth: 120,
 } as const;
@@ -231,6 +231,7 @@ export interface LookBrief {
 export interface Shot {
   id: string;
   look_id: string;
+  content_id: string | null;
   type: 'image' | 'video';
   url: string | null;
   thumbnail_url: string | null;
@@ -302,6 +303,12 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+export interface FeedParams {
+  tag?: string | null;
+  page?: number;
+  limit?: number;
+}
+
 /** 通用 API 响应 */
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -354,9 +361,17 @@ export interface TryOnCreateRequest {
 /** Land 内容详情响应（含搭配单品 + 互动状态） */
 export interface LandContentDetail extends Content {
   items: LookItem[];
+  shots: Shot[];
   comments: Interaction[];
   user_liked: boolean;
   user_favorited: boolean;
+}
+
+export interface InteractionToggleResponse {
+  content_id: string;
+  interaction_type: 'like' | 'favorite' | 'comment';
+  active: boolean;
+  count: number;
 }
 
 /** 带货链接响应 */

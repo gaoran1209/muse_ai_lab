@@ -27,7 +27,7 @@
 | 模块 | 状态 | 说明 |
 |------|------|------|
 | Provider 抽象层 | 已完成 | LLM/Image/Video 三类 Provider，含参数元数据系统 |
-| 已接入厂商 | 已完成 | LLM: Gemini / Zhipu / 302.AI；Image: 302.AI Nano Banana / Seedream；Video: 302.AI Kling |
+| 已接入厂商 | 已完成 | LLM: Gemini / Zhipu / 302.AI；Image: Gemini（Nano Banana 2 / Nano Banana Pro）；Video: 302.AI Kling |
 | 基础画布 | 已完成 | Fabric.js 无限画布，深色主题，图文节点，底部生成面板 |
 | OSS 上传 | 已完成 | 阿里云 OSS 图片上传，返回永久 URL |
 | API 基础 | 已完成 | Provider 查询端点 + Spark/Land Demo 业务 API |
@@ -269,6 +269,7 @@ src/backend/api/
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
+| GET | `/api/v1/projects/{id}/shots` | 查询方案下全部 Shot（用于 Canvas 初始化恢复） |
 | POST | `/api/v1/looks/{id}/generate` | 提交拍摄/生成任务 |
 | GET | `/api/v1/shots/{id}` | 查询生成结果状态 |
 | PATCH | `/api/v1/shots/{id}/adopt` | 采纳/取消采纳 |
@@ -282,7 +283,11 @@ src/backend/api/
   "preset_id": "model_01",        // 预设模特/场景 ID（可选）
   "custom_prompt": "...",         // 自定义指令（可选）
   "reference_image_url": "...",   // TryOn 参考照片 URL（action=tryon 时必填）
-  "parameters": {}                // 厂商参数
+  "parameters": {
+    "model_name": "gemini-3.1-flash-image-preview",
+    "resolution": "2k",
+    "aspect_ratio": "3:4"
+  }                               // 厂商参数
 }
 ```
 
@@ -386,6 +391,9 @@ src/backend/services/
 前端轮询 `GET /api/v1/shots/{id}` 获取状态。
 
 `Shot` 是本项目 Demo 阶段唯一的生成任务实体，不再额外创建 `GenerationTask` 表。
+
+为支持 Spark 画布刷新后恢复历史结果，补充只读查询接口 `GET /api/v1/projects/{id}/shots`。
+返回值沿用 `ShotResponse`，额外包含 `content_id` 用于前端识别哪些 Shot 已被发布聚合引用。
 
 **TryOn 双入口说明**:
 - **Spark 端** (`action=tryon`): 创作者在画布中对 Look 点击「TryOn」快捷操作，参考照片来自素材库或本地上传，生成结果为 Shot 节点展示在画布中

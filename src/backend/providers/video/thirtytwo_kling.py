@@ -100,9 +100,9 @@ class ThirtyTwoKlingProvider(BaseVideoProvider):
         ParamSpec(
             name="model_name",
             type=str,
-            exposed=False,
+            exposed=True,
             default=None,
-            description="模型名称，内部使用",
+            description="模型名称，允许前端按需切换可灵模型版本",
             choices=None,
             required=False,
         ),

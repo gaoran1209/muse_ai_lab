@@ -19,7 +19,9 @@ LOG_FILE="logs/test_$(date +"%Y%m%d_%H%M%S").log"
 
 # 解析参数：第一个参数是测试路径，剩余是 pytest 选项
 TEST_PATTERN="${1:-tests/}"
-shift
+if [ $# -gt 0 ]; then
+    shift
+fi
 PYTEST_OPTIONS="$@"
 
 if [ -z "$PYTEST_OPTIONS" ]; then

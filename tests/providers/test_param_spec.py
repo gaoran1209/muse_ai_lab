@@ -8,6 +8,7 @@ import pytest
 from src.backend.providers.llm.zhipu import ZhipuProvider
 from src.backend.providers.llm.gemini import GeminiProvider
 from src.backend.providers.llm.thirtytwo import ThirtyTwoProvider
+from src.backend.providers.image.gemini import GeminiImageProvider
 from src.backend.providers.image.thirtytwo_seedream import ThirtyTwoSeedreamProvider
 from src.backend.providers.image.thirtytwo_nano_banana import ThirtyTwoNanoBananaProvider
 from src.backend.providers.video.thirtytwo_kling import ThirtyTwoKlingProvider
@@ -112,6 +113,28 @@ class TestImageParamSpec:
         aspect_ratio_param = ThirtyTwoSeedreamProvider.get_param_dict()["aspect_ratio"]
         assert "1:1" in aspect_ratio_param.choices
         assert "16:9" in aspect_ratio_param.choices
+
+    def test_gemini_image_params(self):
+        """测试 GeminiImageProvider 参数规范"""
+        assert GeminiImageProvider.GENERATE_PARAMS, "应该有参数定义"
+
+        exposed = GeminiImageProvider.get_exposed_params()
+        param_names = [p.name for p in exposed]
+
+        assert "images" in param_names
+        assert "model_name" in param_names
+        assert "resolution" in param_names
+        assert "aspect_ratio" in param_names
+
+        model_param = GeminiImageProvider.get_param_dict()["model_name"]
+        assert model_param.default == "imagen-4.0-generate-001"
+        assert model_param.choices == [
+            "gemini-3.1-flash-image-preview",
+            "gemini-3-pro-image-preview",
+            "imagen-4.0-fast-generate-001",
+            "imagen-4.0-generate-001",
+            "imagen-4.0-ultra-generate-001",
+        ]
 
     def test_thirtytwo_nano_banana_params(self):
         """测试 ThirtyTwoNanoBananaProvider 参数规范"""

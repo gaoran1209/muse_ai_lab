@@ -1,97 +1,319 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFabricCanvas } from '../../hooks/useFabricCanvas';
 import { useCanvasStore } from '../../store';
-import { LIMITS } from '../../types';
-import { BottomPromptBar } from './BottomPromptBar';
+import { LIMITS, type Look, type Shot } from '../../types';
+import { BottomPromptBar, type PromptSelection } from './BottomPromptBar';
+import { createCanvasNodeGroup, getCanvasNodeSize, type CanvasNodeType, updateCanvasNodeGroup } from './CanvasNode';
+import { FloatingToolbar, type FloatingSelectionKind } from './FloatingToolbar';
+import { createLookFrameGroup } from './LookFrame';
 import './InfiniteCanvas.css';
 
-/**
- * 无限画布组件（深色节点编辑器风格）
- */
-export function InfiniteCanvas() {
+interface InfiniteCanvasProps {
+  looks: Look[];
+  shots: Shot[];
+  busy: boolean;
+  onGenerateLooks: (assetIds: string[]) => Promise<void>;
+  onGenerateShot: (
+    lookId: string,
+    action: 'change_model' | 'change_background' | 'tryon' | 'custom',
+    customPrompt?: string
+  ) => Promise<void>;
+  onToggleAdopt: (shotId: string, adopted: boolean) => void;
+  onUploadFiles: (files: File[]) => Promise<void> | void;
+}
+
+interface ToolbarSelection {
+  anchor: { x: number; y: number };
+  kind: FloatingSelectionKind;
+  ids: string[];
+  data?: Record<string, unknown>;
+}
+
+interface CreateMenuState {
+  canvasX: number;
+  canvasY: number;
+  screenX: number;
+  screenY: number;
+}
+
+interface LocalNode {
+  id: string;
+  kind: 'prompt-node' | 'asset-image';
+  type: CanvasNodeType;
+  label: string;
+  prompt: string;
+  x: number;
+  y: number;
+  imageUrl?: string | null;
+  statusText?: string | null;
+}
+
+interface LocalBoard {
+  id: string;
+  name: string;
+  prompt: string;
+  frame: FramePosition;
+  itemIds: string[];
+}
+
+type Position = { x: number; y: number };
+type FramePosition = { x: number; y: number; width: number; height: number };
+
+const BOARD_PADDING_X = 36;
+const BOARD_PADDING_Y = 44;
+const BOARD_TITLE_HEIGHT = 32;
+const BOARD_GAP_X = 28;
+const BOARD_GAP_Y = 32;
+const DEFAULT_BOARD_ORIGIN = { x: 120, y: 120 };
+const DEFAULT_BOARD_SPACING = { x: 980, y: 620 };
+
+function defaultPrompt(type: CanvasNodeType) {
+  if (type === 'text') return '';
+  if (type === 'video') return 'Describe motion, camera, and energy for this clip.';
+  return 'Describe the image you want to generate.';
+}
+
+function computeBoardFrame(look: Look, lookIndex: number): FramePosition {
+  const items = Math.max(look.items.length, 1);
+  const columns = items > 2 ? 2 : items;
+  const rows = Math.ceil(items / columns);
+  const imageSize = getCanvasNodeSize('image');
+  const width = BOARD_PADDING_X * 2 + columns * imageSize.width + (columns - 1) * BOARD_GAP_X;
+  const height =
+    BOARD_TITLE_HEIGHT +
+    BOARD_PADDING_Y * 2 +
+    rows * imageSize.height +
+    (rows - 1) * BOARD_GAP_Y;
+
+  if (look.board_position) {
+    return {
+      x: look.board_position.x,
+      y: look.board_position.y,
+      width: Math.max(look.board_position.width, width),
+      height: Math.max(look.board_position.height, height),
+    };
+  }
+
+  return {
+    x: DEFAULT_BOARD_ORIGIN.x + (lookIndex % 2) * DEFAULT_BOARD_SPACING.x,
+    y: DEFAULT_BOARD_ORIGIN.y + Math.floor(lookIndex / 2) * DEFAULT_BOARD_SPACING.y,
+    width,
+    height,
+  };
+}
+
+function computeNodePositionInFrame(frame: FramePosition, itemIndex: number, count: number) {
+  const columns = count > 2 ? 2 : Math.max(count, 1);
+  const column = itemIndex % columns;
+  const row = Math.floor(itemIndex / columns);
+  const imageSize = getCanvasNodeSize('image');
+  return {
+    x:
+      frame.x +
+      BOARD_PADDING_X +
+      imageSize.width / 2 +
+      column * (imageSize.width + BOARD_GAP_X),
+    y:
+      frame.y +
+      BOARD_TITLE_HEIGHT +
+      BOARD_PADDING_Y +
+      imageSize.height / 2 +
+      row * (imageSize.height + BOARD_GAP_Y),
+  };
+}
+
+function defaultShotPosition(frame: FramePosition, shotIndex: number): Position {
+  const size = getCanvasNodeSize('image');
+  const column = shotIndex % 2;
+  const row = Math.floor(shotIndex / 2);
+  return {
+    x: frame.x + frame.width + 160 + column * (size.width + 64),
+    y: frame.y + 110 + row * (size.height + 52),
+  };
+}
+
+function readImageFile(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+export function InfiniteCanvas({
+  looks,
+  shots,
+  busy,
+  onGenerateLooks,
+  onGenerateShot,
+  onToggleAdopt,
+  onUploadFiles,
+}: InfiniteCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Store 状态
   const { isPanning, setPanning, togglePanMode } = useCanvasStore();
-
-  // Fabric 画布 Hook（背景设为透明，让 CSS 点阵网格透出）
-  const { canvas, viewport, resize, setZoom, pan, addImage, addVideo, addText, deleteSelected } =
-    useFabricCanvas(canvasRef, {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      backgroundColor: '',          // 透明，CSS 背景透出
-      onViewportChange: () => {},
-      onImageSelect: (info) => {
-        setSelectedImageUrl(info.dataUrl);
-        setSelectedImagePos({ x: info.canvasLeft + info.canvasWidth / 2, y: info.canvasTop + info.canvasHeight / 2 });
-      },
-      onSelectionClear: () => {
-        setSelectedImageUrl(null);
-        setSelectedImagePos(null);
-      },
-    });
-
-  // 本地状态
   const [isDragging, setIsDragging] = useState(false);
   const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [selectedImageDataUrl, setSelectedImageDataUrl] = useState<string | null>(null);
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
-  const [selectedImagePos, setSelectedImagePos] = useState<{ x: number; y: number } | null>(null);
+  const [toolbarSelection, setToolbarSelection] = useState<ToolbarSelection | null>(null);
+  const [promptSelection, setPromptSelection] = useState<PromptSelection | null>(null);
+  const [createMenu, setCreateMenu] = useState<CreateMenuState | null>(null);
+  const [lookPromptOverrides, setLookPromptOverrides] = useState<Record<string, string>>({});
+  const [lookFrameOverrides, setLookFrameOverrides] = useState<Record<string, FramePosition>>({});
+  const [shotPositionOverrides, setShotPositionOverrides] = useState<Record<string, Position>>({});
+  const [hiddenLookIds, setHiddenLookIds] = useState<string[]>([]);
+  const [hiddenShotIds, setHiddenShotIds] = useState<string[]>([]);
+  const [localNodes, setLocalNodes] = useState<LocalNode[]>([]);
+  const [localBoards, setLocalBoards] = useState<LocalBoard[]>([]);
 
-  /**
-   * 点阵网格随视口平移/缩放而移动
-   * backgroundSize  = 24 * zoom（dot 间距跟随缩放）
-   * backgroundPosition = vpt[4] % size, vpt[5] % size（点随平移偏移）
-   */
+  const visibleLooks = useMemo(
+    () => looks.filter((look) => !hiddenLookIds.includes(look.id)),
+    [hiddenLookIds, looks]
+  );
+  const visibleShots = useMemo(
+    () => shots.filter((shot) => !hiddenShotIds.includes(shot.id)),
+    [hiddenShotIds, shots]
+  );
+  const looksWithOverrides = useMemo(
+    () =>
+      visibleLooks.map((look, lookIndex) => ({
+        ...look,
+        description: lookPromptOverrides[look.id] ?? look.description,
+        frame: lookFrameOverrides[look.id] ?? computeBoardFrame(look, lookIndex),
+      })),
+    [lookFrameOverrides, lookPromptOverrides, visibleLooks]
+  );
+  const shotsWithOverrides = useMemo(
+    () =>
+      visibleShots.map((shot) => ({
+        ...shot,
+        position: shotPositionOverrides[shot.id] ?? shot.canvas_position ?? null,
+      })),
+    [shotPositionOverrides, visibleShots]
+  );
+
+  const { canvas, viewport, resize, setZoom, pan } = useFabricCanvas(canvasRef, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    backgroundColor: '',
+    onSelectionChange: (info) => {
+      const filtered = info.items.filter((item) => item.kind !== 'unknown');
+      if (filtered.length === 0) {
+        setToolbarSelection(null);
+        setPromptSelection(null);
+        return;
+      }
+
+      const primary = filtered[0];
+      const normalizedKind =
+        filtered.length > 1 &&
+        filtered.every((item) => item.kind === 'asset-image' || item.kind === 'look-item-node')
+          ? 'asset-image'
+          : (primary.kind as ToolbarSelection['kind']);
+      setToolbarSelection({
+        anchor: info.anchor,
+        kind: normalizedKind,
+        ids: filtered.map((item) => item.entityId ?? '').filter(Boolean),
+        data: primary.data,
+      });
+
+      if (filtered.length !== 1) {
+        setPromptSelection(null);
+        return;
+      }
+
+      const entityId = primary.entityId ?? '';
+      const data = primary.data ?? {};
+      const nodeType = (data.nodeType as CanvasNodeType | undefined) ?? 'image';
+      const nodeLabel = (data.label as string | undefined) ?? 'Node';
+      const prompt = (data.prompt as string | undefined) ?? '';
+
+      if (primary.kind === 'look-board') {
+        const localBoard = localBoards.find((item) => item.id === entityId);
+        if (localBoard) {
+          setPromptSelection({
+            id: localBoard.id,
+            kind: 'Board',
+            label: localBoard.name,
+            prompt: localBoard.prompt,
+            helper: '这一组对象会作为 Board 一起进行移动和生成。',
+          });
+          return;
+        }
+        const look = looksWithOverrides.find((item) => item.id === entityId);
+        if (!look) return;
+        setPromptSelection({
+          id: look.id,
+          kind: 'Board',
+          label: look.name,
+          prompt: look.description ?? '',
+          helper: '这一组对象会作为 Look 一起进行移动和生成。',
+        });
+        return;
+      }
+
+      if (primary.kind === 'shot-node') {
+        const shot = shotsWithOverrides.find((item) => item.id === entityId);
+        if (!shot) return;
+        setPromptSelection({
+          id: shot.id,
+          kind: shot.type === 'video' ? 'Video' : 'Image',
+          label: shot.adopted ? '已采纳结果' : '生成结果',
+          prompt: prompt,
+          helper: '选中后可继续补充 prompt，并决定是否采纳。',
+          mode: shot.type,
+        });
+        return;
+      }
+
+      if (primary.kind === 'look-item-node' || primary.kind === 'asset-image' || primary.kind === 'prompt-node') {
+        setPromptSelection({
+          id: entityId,
+          kind: nodeType === 'text' ? 'Text' : nodeType === 'video' ? 'Video' : 'Image',
+          label: nodeLabel,
+          prompt,
+          helper:
+            primary.kind === 'look-item-node'
+              ? '这是当前 Board 内的对象。'
+              : primary.kind === 'asset-image'
+                ? '拖入画布的图像会作为输入节点使用。'
+                : '选中后，上方显示基础操作，下方显示 prompt 对话框。',
+          mode: nodeType === 'text' ? undefined : nodeType,
+        });
+        return;
+      }
+
+      setPromptSelection(null);
+    },
+    onImageSelect: (info) => {
+      setSelectedImageDataUrl(info.dataUrl || null);
+      setSelectedImageUrl(info.imageUrl ?? null);
+    },
+    onSelectionClear: () => {
+      setToolbarSelection(null);
+      setPromptSelection(null);
+      setSelectedImageDataUrl(null);
+      setSelectedImageUrl(null);
+    },
+    onCanvasDoubleClick: (info) => {
+      setCreateMenu(info);
+    },
+  });
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const base = 24;
     const size = base * viewport.zoom;
-    // viewport.x = -vpt[4]，所以 vpt[4] = -viewport.x
     const x = ((-viewport.x % size) + size) % size;
     const y = ((-viewport.y % size) + size) % size;
     container.style.backgroundSize = `${size}px ${size}px`;
     container.style.backgroundPosition = `${x}px ${y}px`;
   }, [viewport]);
 
-  /**
-   * 生成图片后放置在画布视口中心
-   */
-  const handleImageGenerated = useCallback(
-    (base64: string) => {
-      const url = `data:image/png;base64,${base64}`;
-      const cx = (window.innerWidth / 2 + viewport.x) / viewport.zoom;
-      const cy = (window.innerHeight / 2 + viewport.y) / viewport.zoom;
-      addImage(url, { x: cx, y: cy });
-    },
-    [addImage, viewport]
-  );
-
-  /**
-   * 视频生成后添加到画布
-   */
-  const handleVideoGenerated = useCallback(
-    (base64: string) => {
-      // 如果有选中的图片，放在图片右侧；否则放在画布中央
-      let x, y;
-      if (selectedImagePos) {
-        x = selectedImagePos.x + 200; // 放在选中图片右侧 200 像素处
-        y = selectedImagePos.y;
-      } else {
-        x = (window.innerWidth / 2 + viewport.x) / viewport.zoom;
-        y = (window.innerHeight / 2 + viewport.y) / viewport.zoom;
-      }
-      addVideo(base64, { x, y });
-    },
-    [addVideo, viewport, selectedImagePos]
-  );
-
-  /**
-   * 初始化：窗口 resize 时调整画布尺寸
-   */
   useEffect(() => {
     const handleResize = () => {
       if (containerRef.current) {
@@ -103,23 +325,39 @@ export function InfiniteCanvas() {
     return () => window.removeEventListener('resize', handleResize);
   }, [resize]);
 
-  /**
-   * 键盘快捷键
-   */
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !e.repeat) {
-        e.preventDefault();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Space' && !event.repeat) {
+        event.preventDefault();
         setIsSpacePressed(true);
       }
-      if ((e.code === 'Delete' || e.code === 'Backspace') && canvas) {
-        const active = canvas.getActiveObject();
-        if (active && !(active as any).isEditing) {
-          e.preventDefault();
-          deleteSelected();
+      if ((event.code === 'Delete' || event.code === 'Backspace') && canvas) {
+        const active = canvas.getActiveObject() as { get?: (key: string) => unknown } | null;
+        const data = (active?.get?.('data') as Record<string, unknown> | undefined) ?? {};
+        const kind = data.kind as string | undefined;
+        const entityId = data.entityId as string | undefined;
+        if (kind === 'look-board' && entityId) {
+          event.preventDefault();
+          setHiddenLookIds((prev) => (prev.includes(entityId) ? prev : [...prev, entityId]));
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+          return;
+        }
+        if ((kind === 'prompt-node' || kind === 'asset-image') && entityId) {
+          event.preventDefault();
+          setLocalNodes((prev) => prev.filter((node) => node.id !== entityId));
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
+          return;
+        }
+        if (kind === 'shot-node' && entityId) {
+          event.preventDefault();
+          setHiddenShotIds((prev) => (prev.includes(entityId) ? prev : [...prev, entityId]));
+          canvas.discardActiveObject();
+          canvas.requestRenderAll();
         }
       }
-      if (e.code === 'Escape') {
+      if (event.code === 'Escape') {
         setPanning(false);
         if (canvas) {
           canvas.discardActiveObject();
@@ -127,119 +365,509 @@ export function InfiniteCanvas() {
         }
       }
     };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') setIsSpacePressed(false);
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code === 'Space') setIsSpacePressed(false);
     };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [canvas, setPanning, deleteSelected]);
+  }, [canvas, setPanning]);
 
-  /**
-   * 平移模式时禁用画布对象的选择 / 拖拽
-   */
   useEffect(() => {
     if (!canvas) return;
     const disable = isSpacePressed || isPanning;
     canvas.selection = !disable;
-    canvas.getObjects().forEach((obj) => {
-      obj.selectable = !disable;
-      obj.evented = !disable;
+    canvas.getObjects().forEach((object) => {
+      const data = object.get('data') as { kind?: string } | undefined;
+      object.selectable = !disable && data?.kind !== 'look-item-node';
+      object.evented = !disable;
+      if (data?.kind === 'look-item-node') {
+        object.selectable = !disable;
+        object.lockMovementX = true;
+        object.lockMovementY = true;
+      }
     });
     canvas.requestRenderAll();
-  }, [canvas, isSpacePressed, isPanning]);
+  }, [canvas, isPanning, isSpacePressed]);
+
+  useEffect(() => {
+    if (!canvas) return;
+    let disposed = false;
+
+    const draw = async () => {
+      const businessObjects = canvas
+        .getObjects()
+        .filter((object) => {
+          const data = object.get('data') as { kind?: string } | undefined;
+          return ['look-board', 'look-item-node', 'shot-node', 'prompt-node', 'asset-image', 'local-board'].includes(data?.kind ?? '');
+        });
+      businessObjects.forEach((object) => canvas.remove(object));
+
+      for (const look of looksWithOverrides) {
+        const childNodes: Array<{ left?: number; top?: number; set: (options: Record<string, unknown>) => void; setCoords: () => void; lockMovementX?: boolean; lockMovementY?: boolean; }> = [];
+        const frame = createLookFrameGroup(look, look.frame.x, look.frame.y, look.frame.width, look.frame.height);
+        let previousLeft = look.frame.x;
+        let previousTop = look.frame.y;
+        if (!disposed) {
+          canvas.add(frame);
+        }
+
+        for (const [itemIndex, item] of look.items.entries()) {
+          const position = computeNodePositionInFrame(look.frame, itemIndex, look.items.length);
+          const node = await createCanvasNodeGroup(
+            {
+              kind: 'look-item-node',
+              entityId: item.id,
+              type: 'image',
+              title: item.category,
+              prompt: item.placeholder_desc ?? '',
+              imageUrl: item.asset_url ?? null,
+            },
+            position.x,
+            position.y
+          );
+          node.lockMovementX = true;
+          node.lockMovementY = true;
+          childNodes.push(node);
+          if (!disposed) canvas.add(node);
+        }
+
+        frame.on('moving', () => {
+          const nextLeft = frame.left ?? previousLeft;
+          const nextTop = frame.top ?? previousTop;
+          const dx = nextLeft - previousLeft;
+          const dy = nextTop - previousTop;
+          previousLeft = nextLeft;
+          previousTop = nextTop;
+          childNodes.forEach((node) => {
+            node.set({
+              left: (node.left ?? 0) + dx,
+              top: (node.top ?? 0) + dy,
+            });
+            node.setCoords();
+          });
+          canvas.requestRenderAll();
+        });
+        frame.on('modified', () => {
+          setLookFrameOverrides((prev) => ({
+            ...prev,
+            [look.id]: {
+              x: frame.left ?? look.frame.x,
+              y: frame.top ?? look.frame.y,
+              width: look.frame.width,
+              height: look.frame.height,
+            },
+          }));
+        });
+      }
+
+      const shotIndexByLook = new Map<string, number>();
+      for (const shot of shotsWithOverrides) {
+        const frame = looksWithOverrides.find((look) => look.id === shot.look_id)?.frame;
+        if (!frame) continue;
+        const index = shotIndexByLook.get(shot.look_id) ?? 0;
+        shotIndexByLook.set(shot.look_id, index + 1);
+        const position = shot.position ?? defaultShotPosition(frame, index);
+        const node = await createCanvasNodeGroup(
+          {
+            kind: 'shot-node',
+            entityId: shot.id,
+            type: shot.type,
+            title: shot.type === 'video' ? 'Video' : 'Image',
+            prompt: shot.prompt ?? '',
+            imageUrl: shot.type === 'image' ? shot.thumbnail_url ?? shot.url : null,
+            statusText: shot.adopted ? '已采纳' : '待确认',
+          },
+          position.x,
+          position.y
+        );
+        node.on('modified', () => {
+          setShotPositionOverrides((prev) => ({
+            ...prev,
+            [shot.id]: { x: node.left ?? position.x, y: node.top ?? position.y },
+          }));
+        });
+        if (!disposed) canvas.add(node);
+      }
+
+      for (const localNode of localNodes) {
+        const node = await createCanvasNodeGroup(
+          {
+            kind: localNode.kind,
+            entityId: localNode.id,
+            type: localNode.type,
+            title: localNode.label,
+            prompt: localNode.prompt,
+            imageUrl: localNode.imageUrl ?? null,
+            statusText: localNode.statusText ?? null,
+          },
+          localNode.x,
+          localNode.y
+        );
+        node.on('modified', () => {
+          setLocalNodes((prev) =>
+            prev.map((item) =>
+              item.id === localNode.id
+                ? { ...item, x: node.left ?? localNode.x, y: node.top ?? localNode.y }
+                : item
+            )
+          );
+        });
+        if (!disposed) canvas.add(node);
+      }
+
+      for (const board of localBoards) {
+        const frame = createLookFrameGroup(
+          {
+            id: board.id,
+            project_id: '',
+            name: board.name,
+            description: board.prompt,
+            style_tags: [],
+            board_position: board.frame,
+            items: [],
+            created_at: '',
+          },
+          board.frame.x,
+          board.frame.y,
+          board.frame.width,
+          board.frame.height
+        );
+        frame.set('data', {
+          kind: 'look-board',
+          entityId: board.id,
+          label: board.name,
+          prompt: board.prompt,
+          source: 'local-board',
+        });
+        let previousLeft = board.frame.x;
+        let previousTop = board.frame.y;
+        frame.on('moving', () => {
+          const nextLeft = frame.left ?? previousLeft;
+          const nextTop = frame.top ?? previousTop;
+          const dx = nextLeft - previousLeft;
+          const dy = nextTop - previousTop;
+          previousLeft = nextLeft;
+          previousTop = nextTop;
+          board.itemIds.forEach((itemId) => {
+            const node = canvas
+              .getObjects()
+              .find((object) => ((object.get('data') as Record<string, unknown> | undefined)?.entityId as string | undefined) === itemId);
+            if (!node) return;
+            node.set({
+              left: (node.left ?? 0) + dx,
+              top: (node.top ?? 0) + dy,
+            });
+            node.setCoords();
+          });
+          canvas.requestRenderAll();
+        });
+        frame.on('modified', () => {
+          setLocalBoards((prev) =>
+            prev.map((item) =>
+              item.id === board.id
+                ? {
+                    ...item,
+                    frame: {
+                      ...item.frame,
+                      x: frame.left ?? item.frame.x,
+                      y: frame.top ?? item.frame.y,
+                    },
+                  }
+                : item
+            )
+          );
+        });
+        if (!disposed) canvas.add(frame);
+      }
+
+      if (!disposed) {
+        canvas.requestRenderAll();
+      }
+    };
+
+    void draw();
+    return () => {
+      disposed = true;
+    };
+  }, [canvas, localBoards, localNodes, looksWithOverrides, shotsWithOverrides]);
 
   const isActuallyPanning = isSpacePressed || isPanning;
 
-  // ==================== 鼠标事件 ====================
+  const handleImageGenerated = useCallback(
+    (base64: string) => {
+      const imageUrl = `data:image/png;base64,${base64}`;
+      const selectedId = toolbarSelection?.ids[0];
+      const selectedType = toolbarSelection?.data?.nodeType as CanvasNodeType | undefined;
+      if (toolbarSelection?.kind === 'prompt-node' && selectedId && selectedType === 'image') {
+        setLocalNodes((prev) =>
+          prev.map((node) =>
+            node.id === selectedId ? { ...node, imageUrl, prompt: promptSelection?.prompt ?? node.prompt } : node
+          )
+        );
+        return;
+      }
+      setLocalNodes((prev) => [
+        ...prev,
+        {
+          id: `prompt-node-${Date.now()}`,
+          kind: 'prompt-node',
+          type: 'image',
+          label: 'Image',
+          prompt: promptSelection?.prompt ?? defaultPrompt('image'),
+          x: (window.innerWidth / 2 + viewport.x) / viewport.zoom,
+          y: (window.innerHeight / 2 + viewport.y) / viewport.zoom,
+          imageUrl,
+        },
+      ]);
+    },
+    [promptSelection?.prompt, toolbarSelection, viewport]
+  );
+
+  const handleVideoGenerated = useCallback(
+    () => {
+      const selectedId = toolbarSelection?.ids[0];
+      const selectedType = toolbarSelection?.data?.nodeType as CanvasNodeType | undefined;
+      if (toolbarSelection?.kind === 'prompt-node' && selectedId && selectedType === 'video') {
+        setLocalNodes((prev) =>
+          prev.map((node) =>
+            node.id === selectedId ? { ...node, statusText: '视频已生成' } : node
+          )
+        );
+        return;
+      }
+      setLocalNodes((prev) => [
+        ...prev,
+        {
+          id: `prompt-node-${Date.now()}`,
+          kind: 'prompt-node',
+          type: 'video',
+          label: 'Video',
+          prompt: promptSelection?.prompt ?? defaultPrompt('video'),
+          x: (window.innerWidth / 2 + viewport.x) / viewport.zoom,
+          y: (window.innerHeight / 2 + viewport.y) / viewport.zoom,
+          statusText: '视频已生成',
+        },
+      ]);
+    },
+    [promptSelection?.prompt, toolbarSelection, viewport]
+  );
 
   const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      if (isActuallyPanning || e.button === 1) {
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (createMenu) {
+        setCreateMenu(null);
+      }
+      if (isActuallyPanning || event.button === 1) {
         setIsDragging(true);
-        setLastMousePos({ x: e.clientX, y: e.clientY });
+        setLastMousePos({ x: event.clientX, y: event.clientY });
       }
     },
-    [isActuallyPanning]
+    [createMenu, isActuallyPanning]
   );
 
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+    (event: React.MouseEvent<HTMLDivElement>) => {
       if (isDragging) {
-        pan(e.clientX - lastMousePos.x, e.clientY - lastMousePos.y);
-        setLastMousePos({ x: e.clientX, y: e.clientY });
+        pan(event.clientX - lastMousePos.x, event.clientY - lastMousePos.y);
+        setLastMousePos({ x: event.clientX, y: event.clientY });
       }
-      if (isActuallyPanning) {
-        (e.currentTarget as HTMLDivElement).style.cursor = isDragging ? 'grabbing' : 'grab';
-      } else {
-        (e.currentTarget as HTMLDivElement).style.cursor = 'default';
-      }
+      event.currentTarget.style.cursor = isActuallyPanning ? (isDragging ? 'grabbing' : 'grab') : 'default';
     },
     [isDragging, isActuallyPanning, lastMousePos, pan]
   );
 
-  const handleMouseUp = useCallback(() => setIsDragging(false), []);
-
   const handleWheel = useCallback(
-    (e: React.WheelEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      const newZoom = Math.max(LIMITS.minZoom, Math.min(LIMITS.maxZoom, viewport.zoom + delta));
-      setZoom(newZoom, { x: e.clientX, y: e.clientY });
+    (event: React.WheelEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const delta = event.deltaY > 0 ? -0.1 : 0.1;
+      const nextZoom = Math.max(LIMITS.minZoom, Math.min(LIMITS.maxZoom, viewport.zoom + delta));
+      setZoom(nextZoom, { x: event.clientX, y: event.clientY });
     },
-    [viewport.zoom, setZoom]
+    [setZoom, viewport.zoom]
   );
 
-  // ==================== 工具栏操作 ====================
-
-  const handleAddText = useCallback(() => {
-    const x = (window.innerWidth / 2 + viewport.x) / viewport.zoom;
-    const y = (window.innerHeight / 2 + viewport.y) / viewport.zoom;
-    addText('双击编辑文字', { x, y });
-  }, [addText, viewport]);
-
-  const handleUploadClick = useCallback(() => fileInputRef.current?.click(), []);
-
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const url = ev.target?.result as string;
-        const x = (window.innerWidth / 2 + viewport.x) / viewport.zoom;
-        const y = (window.innerHeight / 2 + viewport.y) / viewport.zoom;
-        addImage(url, { x, y });
-      };
-      reader.readAsDataURL(file);
-      e.target.value = '';
-    },
-    [viewport, addImage]
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
+  const addLocalNode = useCallback((node: LocalNode) => {
+    setLocalNodes((prev) => [...prev, node]);
   }, []);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (!file || !file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const url = ev.target?.result as string;
-        const x = (e.clientX + viewport.x) / viewport.zoom;
-        const y = (e.clientY + viewport.y) / viewport.zoom;
-        addImage(url, { x, y });
-      };
-      reader.readAsDataURL(file);
+  const addPromptNodeAt = useCallback(
+    (nodeType: CanvasNodeType, x: number, y: number) => {
+      addLocalNode({
+        id: `prompt-node-${Date.now()}`,
+        kind: 'prompt-node',
+        type: nodeType,
+        label: nodeType === 'text' ? 'Text' : nodeType === 'video' ? 'Video' : 'Image',
+        prompt: defaultPrompt(nodeType),
+        x,
+        y,
+      });
     },
-    [viewport, addImage]
+    [addLocalNode]
   );
+
+  const handleDrop = useCallback(
+    async (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const dropX = (event.clientX + viewport.x) / viewport.zoom;
+      const dropY = (event.clientY + viewport.y) / viewport.zoom;
+
+      if (event.dataTransfer.files.length > 0) {
+        const imageFiles = Array.from(event.dataTransfer.files).filter((file) => file.type.startsWith('image/'));
+        if (imageFiles.length > 0) {
+          void onUploadFiles(imageFiles);
+          const previews = await Promise.all(
+            imageFiles.map(async (file, index) => ({
+              id: `asset-node-${Date.now()}-${index}`,
+              imageUrl: await readImageFile(file),
+              label: file.name,
+            }))
+          );
+          previews.forEach((preview, index) => {
+            addLocalNode({
+              id: preview.id,
+              kind: 'asset-image',
+              type: 'image',
+              label: 'Image',
+              prompt: '',
+              x: dropX + index * 28,
+              y: dropY + index * 28,
+              imageUrl: preview.imageUrl,
+            });
+          });
+        }
+        return;
+      }
+
+      const payload = event.dataTransfer.getData('application/json');
+      if (!payload) return;
+
+      try {
+        const asset = JSON.parse(payload) as { id: string; url: string; label: string };
+        addLocalNode({
+          id: `${asset.id}-${Date.now()}`,
+          kind: 'asset-image',
+          type: 'image',
+          label: 'Image',
+          prompt: '',
+          x: dropX,
+          y: dropY,
+          imageUrl: asset.url,
+        });
+      } catch {
+        // Ignore malformed payloads.
+      }
+    },
+    [addLocalNode, onUploadFiles, viewport]
+  );
+
+  const handleSelectionPromptChange = useCallback(
+    (nextPrompt: string) => {
+      if (!toolbarSelection || toolbarSelection.ids.length !== 1) return;
+      const selectedId = toolbarSelection.ids[0];
+
+      if (toolbarSelection.kind === 'look-board') {
+        const localBoard = localBoards.find((item) => item.id === selectedId);
+        if (localBoard) {
+          setLocalBoards((prev) =>
+            prev.map((item) => (item.id === selectedId ? { ...item, prompt: nextPrompt } : item))
+          );
+        } else {
+          setLookPromptOverrides((prev) => ({ ...prev, [selectedId]: nextPrompt }));
+        }
+      }
+
+      if (toolbarSelection.kind === 'prompt-node' || toolbarSelection.kind === 'asset-image') {
+        setLocalNodes((prev) =>
+          prev.map((node) => (node.id === selectedId ? { ...node, prompt: nextPrompt } : node))
+        );
+      }
+
+      if (canvas) {
+        const activeObject = canvas.getActiveObject() as any;
+        if (activeObject) {
+          const data = (activeObject.get('data') as Record<string, unknown> | undefined) ?? {};
+          activeObject.set('data', { ...data, prompt: nextPrompt });
+          if (toolbarSelection.kind === 'prompt-node' || toolbarSelection.kind === 'asset-image') {
+            updateCanvasNodeGroup(activeObject, nextPrompt);
+          }
+          canvas.requestRenderAll();
+        }
+      }
+
+      setPromptSelection((prev) => (prev && prev.id === selectedId ? { ...prev, prompt: nextPrompt } : prev));
+    },
+    [canvas, localBoards, toolbarSelection]
+  );
+
+  const handleGroupSelection = useCallback(() => {
+    if (!canvas || !toolbarSelection || toolbarSelection.ids.length < 2) return;
+
+    const selectedObjects = canvas.getActiveObjects();
+    if (selectedObjects.length < 2) return;
+
+    const bounds = selectedObjects.reduce(
+      (acc, object) => {
+        const rect = object.getBoundingRect();
+        return {
+          left: Math.min(acc.left, rect.left),
+          top: Math.min(acc.top, rect.top),
+          right: Math.max(acc.right, rect.left + rect.width),
+          bottom: Math.max(acc.bottom, rect.top + rect.height),
+        };
+      },
+      { left: Number.POSITIVE_INFINITY, top: Number.POSITIVE_INFINITY, right: 0, bottom: 0 }
+    );
+
+    const boardId = `local-board-${Date.now()}`;
+    setLocalBoards((prev) => [
+      ...prev,
+      {
+        id: boardId,
+        name: `Board ${prev.length + 1}`,
+        prompt: '',
+        itemIds: toolbarSelection.ids,
+        frame: {
+          x: bounds.left - 24,
+          y: bounds.top - 44,
+          width: bounds.right - bounds.left + 48,
+          height: bounds.bottom - bounds.top + 68,
+        },
+      },
+    ]);
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+  }, [canvas, toolbarSelection]);
+
+  const handleClearSelection = useCallback(() => {
+    if (canvas) {
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+    }
+    setToolbarSelection(null);
+    setPromptSelection(null);
+    setSelectedImageDataUrl(null);
+    setSelectedImageUrl(null);
+  }, [canvas]);
+
+  const handleCreateNode = useCallback(
+    (nodeType: CanvasNodeType) => {
+      if (!createMenu) return;
+      addPromptNodeAt(nodeType, createMenu.canvasX, createMenu.canvasY);
+      setCreateMenu(null);
+    },
+    [addPromptNodeAt, createMenu]
+  );
+
+  const selectedShot =
+    toolbarSelection?.kind === 'shot-node'
+      ? shotsWithOverrides.find((shot) => shot.id === toolbarSelection.ids[0])
+      : undefined;
 
   return (
     <div
@@ -247,42 +875,94 @@ export function InfiniteCanvas() {
       className="infinite-canvas-container"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
+      onMouseUp={() => setIsDragging(false)}
+      onMouseLeave={() => setIsDragging(false)}
       onWheel={handleWheel}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        void handleDrop(event);
+      }}
     >
       <canvas ref={canvasRef} />
 
-      {/* 隐藏文件输入 */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+      {toolbarSelection ? (
+        <FloatingToolbar
+          anchor={toolbarSelection.anchor}
+          selectionKind={toolbarSelection.kind}
+          count={toolbarSelection.ids.length}
+          adopted={selectedShot?.adopted}
+          onGroupSelection={handleGroupSelection}
+          onGenerateLooks={() => {
+            const assetIds = toolbarSelection.ids.filter((id) => !id.startsWith('asset-node-'));
+            if (assetIds.length === 0) return;
+            void onGenerateLooks(assetIds);
+          }}
+          onGenerateShot={(action) => {
+            const lookId = toolbarSelection.ids[0];
+            if (!lookId) return;
+            const prompt = lookPromptOverrides[lookId] ?? looks.find((look) => look.id === lookId)?.description ?? '';
+            void onGenerateShot(lookId, action, action === 'custom' ? prompt : undefined);
+          }}
+          onToggleAdopt={() => {
+            if (!selectedShot) return;
+            onToggleAdopt(selectedShot.id, !selectedShot.adopted);
+          }}
+        />
+      ) : null}
 
-      {/* 底部生成面板（始终可见） */}
+      {createMenu ? (
+        <div
+          className="node-create-menu"
+          style={{ left: createMenu.screenX, top: createMenu.screenY }}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          <span className="node-create-menu-title">Add Nodes</span>
+          <button type="button" className="node-create-item is-active" onClick={() => handleCreateNode('text')}>
+            <span className="node-create-icon">T</span>
+            <span>
+              <strong>Text</strong>
+              <em>单一文本内容</em>
+            </span>
+          </button>
+          <button type="button" className="node-create-item" onClick={() => handleCreateNode('image')}>
+            <span className="node-create-icon">I</span>
+            <span>
+              <strong>Image</strong>
+              <em>空状态支持 prompt 生图</em>
+            </span>
+          </button>
+          <button type="button" className="node-create-item" onClick={() => handleCreateNode('video')}>
+            <span className="node-create-icon">V</span>
+            <span>
+              <strong>Video</strong>
+              <em>空状态支持 prompt 生视频</em>
+            </span>
+          </button>
+        </div>
+      ) : null}
+
       <BottomPromptBar
         onImageGenerated={handleImageGenerated}
         onVideoGenerated={handleVideoGenerated}
-        selectedImageDataUrl={selectedImageUrl}
+        selectedImageDataUrl={selectedImageDataUrl}
+        selectedImageUrl={selectedImageUrl}
+        selection={promptSelection}
+        onSelectionPromptChange={handleSelectionPromptChange}
+        onClearSelection={handleClearSelection}
       />
 
-      {/* 左侧工具侧边栏 */}
       <div className="canvas-sidebar">
-        <button onClick={handleAddText} className="sidebar-button" data-tip="文字">
+        <button
+          onClick={() => {
+            const x = (window.innerWidth / 2 + viewport.x) / viewport.zoom;
+            const y = (window.innerHeight / 2 + viewport.y) / viewport.zoom;
+            addPromptNodeAt('text', x, y);
+          }}
+          className="sidebar-button"
+          data-tip="文字"
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <path d="M4 7V4h16v3M9 20h6M12 4v16" strokeLinecap="round" />
-          </svg>
-        </button>
-        <button onClick={handleUploadClick} className="sidebar-button" data-tip="上传图片">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="9" cy="9" r="2" fill="currentColor" stroke="none" />
-            <path d="M21 15l-5-5L5 21" strokeLinecap="round" />
           </svg>
         </button>
 
@@ -316,17 +996,8 @@ export function InfiniteCanvas() {
             <path d="M12 5v14M5 12h14" strokeLinecap="round" />
           </svg>
         </button>
+        {busy ? <span className="canvas-busy-indicator">SYNC</span> : null}
       </div>
-
-      {/* 平移模式提示 */}
-      {isActuallyPanning && (
-        <div className="pan-mode-indicator">
-          {isSpacePressed ? '松开空格退出平移' : 'ESC 退出平移模式'}
-        </div>
-      )}
-
-      {/* 拖拽提示 */}
-      <div className="drag-hint">拖拽图片到画布 · 上传</div>
     </div>
   );
 }

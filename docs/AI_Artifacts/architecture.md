@@ -122,7 +122,7 @@ Provider 统一通过抽象基类和 `ParamSpec` 元数据暴露能力：
 当前仓库中的 Provider 清单以代码目录为准，SOP 负责接入规范：
 
 - LLM: Gemini / Zhipu / 302.AI
-- Image: 302.AI Nano Banana / Seedream
+- Image: Gemini Image (Nano Banana 2 / Nano Banana Pro)
 - Video: 302.AI Kling
 
 产品功能要选哪个 Provider 做默认实现，属于功能决策，应在 PRD 和 `tech_requirement` 中说明；不要在架构文档和 SOP 中硬编码产品默认模型。

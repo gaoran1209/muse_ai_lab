@@ -17,6 +17,8 @@ from src.backend.providers.llm import (
 )
 from src.backend.providers.image import (
     BaseImageProvider,
+    gemini_image_provider,
+    thirtytwo_gemini_image_provider,
     thirtytwo_nano_banana_provider,
     thirtytwo_seedream_provider,
 )
@@ -45,6 +47,8 @@ class ProviderRegistry:
 
     # Image Providers
     _image_providers: dict[str, BaseImageProvider] = {
+        "gemini": gemini_image_provider,
+        "thirtytwo_gemini": thirtytwo_gemini_image_provider,
         "thirtytwo_nano_banana": thirtytwo_nano_banana_provider,
         "thirtytwo_seedream": thirtytwo_seedream_provider,
     }
@@ -71,7 +75,7 @@ class ProviderRegistry:
         """获取 Image Provider
 
         Args:
-            vendor: 厂商名称 (thirtytwo_nano_banana, thirtytwo_seedream)
+            vendor: 厂商名称 (gemini)
 
         Returns:
             Provider 实例，不存在则返回 None
@@ -337,6 +341,11 @@ class ImageService:
 
         # 过滤参数，只传递暴露的参数
         filtered_params = ImageService._filter_exposed_params(provider, kwargs)
+        resolved_model = (
+            filtered_params.get("model_name")
+            if isinstance(filtered_params.get("model_name"), str) and filtered_params.get("model_name")
+            else provider.model_name
+        )
 
         try:
             image_bytes = provider.generate(prompt, **filtered_params)
@@ -351,14 +360,14 @@ class ImageService:
                 "content": content,
                 "format": return_format,
                 "vendor": vendor,
-                "model": provider.model_name,
+                "model": resolved_model,
             }
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
                 "vendor": vendor,
-                "model": provider.model_name,
+                "model": resolved_model,
                 "format": return_format,
             }
 

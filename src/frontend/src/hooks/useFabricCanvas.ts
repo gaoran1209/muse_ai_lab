@@ -10,6 +10,7 @@ export interface ImageSelectInfo {
   canvasWidth: number;
   canvasHeight: number;
   dataUrl: string; // base64 data URL of the selected image
+  imageUrl?: string;
 }
 
 export interface UseFabricCanvasOptions {
@@ -18,7 +19,18 @@ export interface UseFabricCanvasOptions {
   backgroundColor?: string;
   onViewportChange?: (viewport: Viewport) => void;
   onImageSelect?: (info: ImageSelectInfo) => void;
+  onSelectionChange?: (info: CanvasSelectionInfo) => void;
   onSelectionClear?: () => void;
+  onCanvasDoubleClick?: (info: { canvasX: number; canvasY: number; screenX: number; screenY: number }) => void;
+}
+
+export interface CanvasSelectionInfo {
+  items: Array<{
+    kind: string;
+    entityId?: string;
+    data?: Record<string, unknown>;
+  }>;
+  anchor: { x: number; y: number };
 }
 
 export function useFabricCanvas(
@@ -36,13 +48,18 @@ export function useFabricCanvas(
   const viewportRef = useRef<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 1 });
   const [isReady, setIsReady] = useState(false);
+  const selectionAnchorRef = useRef<string>('');
 
   // 保持回调 refs 最新，避免事件监听器中的旧闭包
   const onImageSelectRef = useRef(options.onImageSelect);
+  const onSelectionChangeRef = useRef(options.onSelectionChange);
   const onSelectionClearRef = useRef(options.onSelectionClear);
+  const onCanvasDoubleClickRef = useRef(options.onCanvasDoubleClick);
 
   useEffect(() => { onImageSelectRef.current = options.onImageSelect; }, [options.onImageSelect]);
+  useEffect(() => { onSelectionChangeRef.current = options.onSelectionChange; }, [options.onSelectionChange]);
   useEffect(() => { onSelectionClearRef.current = options.onSelectionClear; }, [options.onSelectionClear]);
+  useEffect(() => { onCanvasDoubleClickRef.current = options.onCanvasDoubleClick; }, [options.onCanvasDoubleClick]);
 
   // 初始化画布
   useEffect(() => {
@@ -56,6 +73,16 @@ export function useFabricCanvas(
       preserveObjectStacking: true,
     });
 
+    const getAnchorFromObject = (activeObject: {
+      getBoundingRect: () => { left: number; top: number; width: number; height: number };
+    }) => {
+      const bounds = activeObject.getBoundingRect();
+      return {
+        x: bounds.left + bounds.width / 2,
+        y: bounds.top,
+      };
+    };
+
     // 监听对象移动事件，确保控制点实时更新
     canvas.on('object:moving', () => {
       canvas.requestRenderAll();
@@ -67,30 +94,50 @@ export function useFabricCanvas(
     });
 
     // 图片选中时通知外部
+    const notifySelectionChanged = (
+      selectedObjects: Array<{ data?: { kind?: string; entityId?: string } }>,
+      activeObject: { getBoundingRect: () => { left: number; top: number; width: number; height: number } } | null
+    ) => {
+      if (!activeObject || selectedObjects.length === 0) return;
+      const anchor = getAnchorFromObject(activeObject);
+      onSelectionChangeRef.current?.({
+        items: selectedObjects.map((obj) => ({
+          kind: obj.data?.kind ?? 'unknown',
+          entityId: obj.data?.entityId,
+          data: obj.data,
+        })),
+        anchor,
+      });
+      selectionAnchorRef.current = `${anchor.x}:${anchor.y}:${selectedObjects.length}`;
+    };
+
     const notifyImageSelected = (obj: any) => {
-      if (obj?.type !== 'image') {
-        onSelectionClearRef.current?.();
+      const data = (obj?.get?.('data') as Record<string, unknown> | undefined) ?? obj?.data;
+      const imageUrl = typeof data?.imageUrl === 'string' ? data.imageUrl : undefined;
+      if (obj?.type !== 'image' && !imageUrl) {
         return;
       }
-      const w = obj.getScaledWidth();
-      const h = obj.getScaledHeight();
-      // 导出图片原始数据为 data URL
-      let dataUrl = '';
-      try {
-        dataUrl = obj.toDataURL({ format: 'png' });
-      } catch {
-        dataUrl = '';
+      const bounds = obj.getBoundingRect();
+      let dataUrl = imageUrl?.startsWith('data:') ? imageUrl : '';
+      if (obj?.type === 'image' && !dataUrl) {
+        try {
+          dataUrl = obj.toDataURL({ format: 'png' });
+        } catch {
+          dataUrl = '';
+        }
       }
       onImageSelectRef.current?.({
-        canvasLeft: obj.left - w / 2,
-        canvasTop: obj.top - h / 2,
-        canvasWidth: w,
-        canvasHeight: h,
+        canvasLeft: bounds.left,
+        canvasTop: bounds.top,
+        canvasWidth: bounds.width,
+        canvasHeight: bounds.height,
         dataUrl,
+        imageUrl,
       });
     };
 
     canvas.on('selection:created', (e: any) => {
+      notifySelectionChanged(e.selected ?? [], canvas.getActiveObject() as never);
       if (e.selected?.length === 1) {
         notifyImageSelected(e.selected[0]);
       } else {
@@ -99,6 +146,7 @@ export function useFabricCanvas(
     });
 
     canvas.on('selection:updated', (e: any) => {
+      notifySelectionChanged(e.selected ?? [], canvas.getActiveObject() as never);
       if (e.selected?.length === 1) {
         notifyImageSelected(e.selected[0]);
       } else {
@@ -107,7 +155,37 @@ export function useFabricCanvas(
     });
 
     canvas.on('selection:cleared', () => {
+      selectionAnchorRef.current = '';
+      onSelectionChangeRef.current?.({
+        items: [],
+        anchor: { x: 0, y: 0 },
+      });
       onSelectionClearRef.current?.();
+    });
+
+    canvas.on('mouse:dblclick', (event: any) => {
+      if (event.target) return;
+      const pointer = canvas.getPointer(event.e);
+      onCanvasDoubleClickRef.current?.({
+        canvasX: pointer.x,
+        canvasY: pointer.y,
+        screenX: event.e.clientX,
+        screenY: event.e.clientY,
+      });
+    });
+
+    canvas.on('after:render', () => {
+      const activeObject = canvas.getActiveObject() as
+        | {
+            getBoundingRect: () => { left: number; top: number; width: number; height: number };
+          }
+        | null;
+      const activeObjects = canvas.getActiveObjects() as Array<{ data?: { kind?: string; entityId?: string } }>;
+      if (!activeObject || activeObjects.length === 0) return;
+      const anchor = getAnchorFromObject(activeObject);
+      const nextSignature = `${anchor.x}:${anchor.y}:${activeObjects.length}`;
+      if (nextSignature === selectionAnchorRef.current) return;
+      notifySelectionChanged(activeObjects, activeObject);
     });
 
     fabricCanvasRef.current = canvas;
@@ -182,7 +260,10 @@ export function useFabricCanvas(
 
   // 添加图片（禁用旋转）
   const addImage = useCallback(
-    async (url: string, options: { x?: number; y?: number; id?: string } = {}) => {
+    async (
+      url: string,
+      options: { x?: number; y?: number; id?: string; data?: Record<string, unknown> } = {}
+    ) => {
       const canvas = fabricCanvasRef.current;
       if (!canvas) return null;
 
@@ -191,7 +272,7 @@ export function useFabricCanvas(
         const img = await FabricImage.fromURL(url, isDataUrl ? {} : { crossOrigin: 'anonymous' });
         if (!img) return null;
 
-        const { x = 100, y = 100, id } = options;
+        const { x = 100, y = 100, id, data } = options;
 
         // 限制图片最大尺寸（相对画布适中）
         const maxSize = 280;
@@ -213,7 +294,8 @@ export function useFabricCanvas(
           strokeWidth: 2,
           strokeUniform: true,
           padding: 6,
-          ...(id && { data: { id } }),
+          ...(id && { data: { id, ...(data ?? {}) } }),
+          ...(!id && data ? { data } : {}),
         });
 
         canvas.add(img);
