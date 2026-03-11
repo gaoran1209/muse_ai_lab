@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-本文件只负责 **AI Agent 协作规范**、常用命令和文档同步要求。内容与 `AGENTS.md` 保持同步。
+本文件只负责 **AI Agent 协作规范**、常用命令和文档同步要求。
 
 产品定义以 `docs/PRD/` 为准。  
 数据模型、API 契约、状态流转以 `docs/AI_Artifacts/tech_requirement.md` 为准。  

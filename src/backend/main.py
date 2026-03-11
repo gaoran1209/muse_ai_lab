@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.backend.api import router
+from src.backend.database import create_tables
 from src.backend.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,9 +19,11 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
-    logger.info("Starting Muse AI Studio backend...")
+    logger.info("Starting Muse AI Lab backend...")
+    create_tables()
+    logger.info("Database tables ready.")
     yield
-    logger.info("Shutting down Muse AI Studio backend...")
+    logger.info("Shutting down Muse AI Lab backend...")
 
 
 # 创建 FastAPI 应用

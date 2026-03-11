@@ -69,6 +69,11 @@ class Config:
     # 文档: https://doc.302.ai/421815034e0
     THIRTYTWO_VIDEO_MODEL = os.getenv("THIRTYTWO_VIDEO_MODEL")
 
+    # =============================================================================
+    # 数据库配置
+    # =============================================================================
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/muse.db")
+
     # Debug 模式
     # =============================================================================
     DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in ("true", "1", "on")

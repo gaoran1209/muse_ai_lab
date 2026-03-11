@@ -152,3 +152,216 @@ export const LIMITS = {
   defaultFontSize: 16,
   minTextWidth: 120,
 } as const;
+
+// ============================================================
+// 业务实体类型（与后端 schemas.py 一一对应）
+// ============================================================
+
+/** 素材标签 */
+export interface AssetTags {
+  category: string;
+  subcategory?: string;
+  color?: string;
+  style?: string;
+  season?: string;
+  occasion?: string;
+}
+
+/** 设计方案 */
+export interface Project {
+  id: string;
+  name: string;
+  cover_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** 方案详情（含统计） */
+export interface ProjectDetail extends Project {
+  asset_count: number;
+  look_count: number;
+}
+
+/** 素材 */
+export interface Asset {
+  id: string;
+  project_id: string;
+  url: string;
+  thumbnail_url: string | null;
+  category: 'product' | 'model' | 'background' | 'pose';
+  tags: AssetTags | null;
+  original_filename: string | null;
+  created_at: string;
+}
+
+/** Look 单品 */
+export interface LookItem {
+  id: string;
+  look_id: string;
+  asset_id: string | null;
+  category: string;
+  placeholder_desc: string | null;
+  sort_order: number;
+  asset_url?: string | null;
+}
+
+/** 搭配方案 */
+export interface Look {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string | null;
+  style_tags: string[];
+  board_position: { x: number; y: number; width: number; height: number } | null;
+  items: LookItem[];
+  created_at: string;
+}
+
+/** Look 列表项（轻量） */
+export interface LookBrief {
+  id: string;
+  project_id: string;
+  name: string;
+  style_tags: string[];
+  item_count: number;
+  created_at: string;
+}
+
+/** 生成结果 / 拍摄 */
+export interface Shot {
+  id: string;
+  look_id: string;
+  type: 'image' | 'video';
+  url: string | null;
+  thumbnail_url: string | null;
+  prompt: string | null;
+  parameters: Record<string, unknown> | null;
+  vendor: string | null;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  adopted: boolean;
+  canvas_position: { x: number; y: number } | null;
+  created_at: string;
+}
+
+/** 发布内容 */
+export interface Content {
+  id: string;
+  look_id: string;
+  title: string;
+  description: string | null;
+  tags: string[];
+  cover_url: string | null;
+  shot_ids: string[];
+  like_count: number;
+  favorite_count: number;
+  comment_count: number;
+  published_at: string;
+}
+
+/** 内容卡片（Feed 列表轻量版） */
+export interface ContentBrief {
+  id: string;
+  title: string;
+  cover_url: string | null;
+  tags: string[];
+  like_count: number;
+  favorite_count: number;
+  published_at: string;
+}
+
+/** 互动记录 */
+export interface Interaction {
+  id: string;
+  content_id: string;
+  type: 'like' | 'favorite' | 'comment';
+  user_identifier: string;
+  comment_text: string | null;
+  created_at: string;
+}
+
+/** 试穿任务 */
+export interface TryOnTask {
+  id: string;
+  content_id: string;
+  user_photo_url: string;
+  result_url: string | null;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  created_at: string;
+  completed_at: string | null;
+}
+
+// ============================================================
+// API 辅助类型
+// ============================================================
+
+/** 分页响应 */
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** 通用 API 响应 */
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+// ============================================================
+// 请求类型
+// ============================================================
+
+/** AI 搭配生成请求 */
+export interface LookGenerateRequest {
+  asset_ids: string[];
+  mode: 'auto' | 'complete' | 'group';
+  count: number;
+}
+
+/** 拍摄/生成任务请求 */
+export interface ShotGenerateRequest {
+  type: 'image' | 'video';
+  action: 'change_model' | 'change_background' | 'tryon' | 'custom';
+  vendor?: string;
+  preset_id?: string;
+  custom_prompt?: string;
+  reference_image_url?: string;
+  parameters?: Record<string, unknown>;
+}
+
+/** 内容发布请求 */
+export interface ContentPublishRequest {
+  look_id: string;
+  shot_ids: string[];
+  title: string;
+  description?: string;
+  tags: string[];
+}
+
+/** 评论创建请求 */
+export interface CommentCreateRequest {
+  text: string;
+  user_identifier?: string;
+}
+
+/** TryOn 请求 */
+export interface TryOnCreateRequest {
+  user_photo_url: string;
+}
+
+/** Land 内容详情响应（含搭配单品 + 互动状态） */
+export interface LandContentDetail extends Content {
+  items: LookItem[];
+  comments: Interaction[];
+  user_liked: boolean;
+  user_favorited: boolean;
+}
+
+/** 带货链接响应 */
+export interface PromoteResponse {
+  content_id: string;
+  promote_url: string;
+  qr_code_url: string | null;
+}

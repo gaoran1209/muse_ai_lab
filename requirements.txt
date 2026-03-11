@@ -3,7 +3,6 @@ google-genai==1.65.0
 python-dotenv==1.2.1
 requests==2.32.5
 socksio==1.0.0
-zhipuai==2.1.5.20250825
 
 # Testing
 pytest==9.0.2
@@ -14,6 +13,9 @@ fastapi==0.115.12
 pydantic==2.10.6
 httpx==0.28.1
 python-multipart==0.0.12
+
+# Database
+sqlalchemy>=2.0
 
 # OSS
 oss2==2.19.1

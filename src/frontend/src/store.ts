@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import type { CanvasItem, Viewport } from './types';
 
-// ==================== 画布 Store ====================
+// ============================================================
+// CANVAS STORE — 现有画布状态（保留原有代码）
+// ============================================================
 
 interface CanvasStore {
   // 状态
@@ -82,3 +84,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   togglePanMode: () => set((state) => ({ isPanning: !state.isPanning })),
 }));
+
+// ============================================================
+// SPARK STORE — Agent B 负责实现
+// 包含：ProjectStore, AssetStore, LookStore, GenerationStore
+// ============================================================
+// TODO: Agent B 在此区域实现 Spark 相关状态管理
+
+// ============================================================
+// LAND STORE — Agent C 负责实现
+// 包含：FeedStore, InteractionStore, TryOnStore
+// ============================================================
+// TODO: Agent C 在此区域实现 Land 相关状态管理
