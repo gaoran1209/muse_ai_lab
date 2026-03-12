@@ -1,7 +1,11 @@
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from src.backend.database import Base, engine
 from src.backend.main import app
+from src.backend.models import Asset, ProjectAsset
+from src.backend.services import asset_service as asset_service_module
+from src.backend.services._helpers import dumps_json
 from src.backend.services.provider_service import ImageService, LLMService, VideoService
 
 
@@ -340,3 +344,97 @@ def test_full_business_flow():
 
     delete_project_resp = client.delete(f"/api/v1/projects/{project['id']}")
     assert delete_project_resp.status_code == 204
+
+
+def test_library_upload_uses_oss_when_configured(monkeypatch):
+    project_resp = client.post("/api/v1/projects", json={"name": "OSS Upload Demo"})
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    monkeypatch.setattr(asset_service_module.config, "OSS_ENDPOINT", "https://oss-cn-hangzhou.aliyuncs.com")
+    monkeypatch.setattr(asset_service_module.config, "OSS_BUCKET_NAME", "demo-bucket")
+    monkeypatch.setattr(asset_service_module.config, "OSS_ACCESS_KEY_ID", "demo-key")
+    monkeypatch.setattr(asset_service_module.config, "OSS_SECRET_ACCESS_KEY", "demo-secret")
+    monkeypatch.setattr(asset_service_module.config, "OSS_DISPLAY_HOST", "https://cdn.example.com")
+    monkeypatch.setattr(asset_service_module.config, "OSS_REMOTE_DIR", "upload")
+    monkeypatch.setattr(
+        asset_service_module,
+        "upload_local_image",
+        lambda local_file_path, oss_config=None: "https://cdn.example.com/upload/demo_asset.webp",
+    )
+
+    upload_resp = client.post(
+        "/api/v1/assets/library/upload",
+        data={"project_id": project["id"], "owner_user_id": "demo_user_001"},
+        files=[("files", ("black_dress.png", MINIMAL_PNG, "image/png"))],
+    )
+    assert upload_resp.status_code == 201
+    asset = upload_resp.json()[0]
+    assert asset["library_scope"] == "user"
+    assert asset["storage_provider"] == "oss"
+    assert asset["url"] == "https://cdn.example.com/upload/demo_asset.webp"
+    assert asset["storage_key"] == "upload/demo_asset.webp"
+
+
+def test_library_listing_separates_public_and_user_assets():
+    project_resp = client.post("/api/v1/projects", json={"name": "Library Tabs Demo"})
+    assert project_resp.status_code == 201
+    project = project_resp.json()
+
+    user_upload_resp = client.post(
+        "/api/v1/assets/library/upload",
+        data={"project_id": project["id"], "owner_user_id": "demo_user_001"},
+        files=[("files", ("black_dress.png", MINIMAL_PNG, "image/png"))],
+    )
+    assert user_upload_resp.status_code == 201
+    user_asset = user_upload_resp.json()[0]
+
+    with Session(engine) as db:
+        public_asset = Asset(
+            project_id=project["id"],
+            url="https://cdn.example.com/public/studio_background.webp",
+            thumbnail_url="https://cdn.example.com/public/studio_background.webp",
+            category="background",
+            tags=dumps_json(
+                {
+                    "category": "background",
+                    "subcategory": None,
+                    "color": "beige",
+                    "style": "minimal",
+                    "season": "spring",
+                    "occasion": "work",
+                }
+            ),
+            original_filename="studio_background.webp",
+            library_scope="public",
+            owner_user_id=None,
+            source_type="seed",
+            storage_provider="oss",
+            storage_key="public/studio_background.webp",
+            status="active",
+        )
+        db.add(public_asset)
+        db.flush()
+        db.add(ProjectAsset(project_id=project["id"], asset_id=public_asset.id))
+        db.commit()
+        db.refresh(public_asset)
+        public_asset_id = public_asset.id
+
+    delete_public_resp = client.delete(f"/api/v1/assets/{public_asset_id}")
+    assert delete_public_resp.status_code == 400
+
+    public_list_resp = client.get(
+        "/api/v1/assets/library",
+        params={"scope": "public", "owner_user_id": "demo_user_001"},
+    )
+    assert public_list_resp.status_code == 200
+    assert len(public_list_resp.json()) == 1
+    assert public_list_resp.json()[0]["id"] == public_asset_id
+
+    user_list_resp = client.get(
+        "/api/v1/assets/library",
+        params={"scope": "user", "owner_user_id": "demo_user_001"},
+    )
+    assert user_list_resp.status_code == 200
+    assert len(user_list_resp.json()) == 1
+    assert user_list_resp.json()[0]["id"] == user_asset["id"]

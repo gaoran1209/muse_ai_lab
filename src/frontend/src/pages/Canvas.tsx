@@ -16,10 +16,12 @@ export default function CanvasPage() {
   const {
     activeProject,
     assets,
+    libraryAssets,
     looks,
     shots,
     publishedLookIds,
     activeCategory,
+    activeLibraryScope,
     selectedPublishShotIds,
     loadingWorkspace,
     busy,
@@ -28,7 +30,9 @@ export default function CanvasPage() {
     loadWorkspace,
     renameProject,
     setActiveCategory,
+    setActiveLibraryScope,
     uploadAssetFiles,
+    ensureAssetLinked,
     updateAssetMeta,
     deleteAssetById,
     generateLooksForAssets,
@@ -49,6 +53,8 @@ export default function CanvasPage() {
     lookId: string;
     action: 'change_model' | 'change_background' | 'tryon';
     defaultMode?: string;
+    sourceImageUrl?: string | null;
+    targetPosition?: { x: number; y: number } | null;
   } | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftProjectName, setDraftProjectName] = useState('');
@@ -112,7 +118,12 @@ export default function CanvasPage() {
   };
 
   const handleQuickAction = useCallback(
-    (action: QuickAction, _imageUrl: string | null) => {
+    (
+      action: QuickAction,
+      imageUrl: string | null,
+      targetPosition: { x: number; y: number } | null,
+      lookId: string | null
+    ) => {
       const actionMap: Record<QuickAction, { dialogAction: 'change_background' | 'change_model' | 'tryon'; mode?: string }> = {
         bg_blend: { dialogAction: 'change_background', mode: 'blend' },
         bg_replace: { dialogAction: 'change_background', mode: 'replace' },
@@ -124,14 +135,15 @@ export default function CanvasPage() {
       const mapped = actionMap[action];
       if (!mapped) return;
 
-      // Use the first available look as context; if none exists, use empty string
-      // so the dialog can still open (generation will use the selected image).
-      const targetLookId = looks[0]?.id ?? '';
+      const targetLookId = lookId ?? looks[0]?.id ?? '';
+      if (!targetLookId) return;
 
       setGenerationDialog({
         lookId: targetLookId,
         action: mapped.dialogAction,
         defaultMode: mapped.mode,
+        sourceImageUrl: imageUrl,
+        targetPosition,
       });
     },
     [looks]
@@ -193,14 +205,20 @@ export default function CanvasPage() {
       <main className="canvas-layout">
         <AssetPanel
           open={assetPanelOpen}
-          assets={assets}
+          libraryAssets={libraryAssets}
+          linkedAssetIds={assets.map((asset) => asset.id)}
           activeCategory={activeCategory}
+          activeLibraryScope={activeLibraryScope}
           busy={busy}
           onCategoryChange={setActiveCategory}
+          onLibraryScopeChange={setActiveLibraryScope}
           onUpload={(files) => {
             if (!files || files.length === 0) return;
-            const category = activeCategory;
+            const category = activeCategory === 'all' ? 'product' : activeCategory;
             void uploadAssetFiles(projectId, Array.from(files), category);
+          }}
+          onEnsureLinked={(assetId) => {
+            void ensureAssetLinked(projectId, assetId);
           }}
           onDeleteAsset={(assetId) => {
             void deleteAssetById(assetId);
@@ -219,7 +237,7 @@ export default function CanvasPage() {
           initialCanvasState={initialCanvasState}
           onCanvasStateChange={reportCanvasStateChange}
           onUploadFiles={(files) => {
-            const category = activeCategory;
+            const category = activeCategory === 'all' ? 'product' : activeCategory;
             return uploadAssetFiles(projectId, files, category).then(() => undefined);
           }}
           onGenerateLooks={async (assetIds) => {
@@ -303,8 +321,9 @@ export default function CanvasPage() {
             action: generationDialog.action,
             presetId,
             customPrompt,
-            referenceImageUrl,
+            referenceImageUrl: referenceImageUrl ?? generationDialog.sourceImageUrl ?? undefined,
             parameters,
+            pendingCanvasPosition: generationDialog.targetPosition ?? undefined,
           });
           setGenerationDialog(null);
         }}

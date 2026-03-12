@@ -92,7 +92,14 @@ def asset_to_response(asset: Asset) -> AssetResponse:
         category=asset.category,
         tags=coerce_asset_tags(asset.tags),
         original_filename=asset.original_filename,
+        library_scope=asset.library_scope,
+        owner_user_id=asset.owner_user_id,
+        source_type=asset.source_type,
+        storage_provider=asset.storage_provider,
+        storage_key=asset.storage_key,
+        status=asset.status,
         created_at=asset.created_at,
+        last_used_at=asset.last_used_at,
     )
 
 

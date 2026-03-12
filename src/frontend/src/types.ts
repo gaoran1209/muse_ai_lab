@@ -185,13 +185,20 @@ export interface ProjectDetail extends Project {
 /** 素材 */
 export interface Asset {
   id: string;
-  project_id: string;
+  project_id: string | null;
   url: string;
   thumbnail_url: string | null;
   category: 'product' | 'model' | 'background' | 'pose';
   tags: AssetTags | null;
   original_filename: string | null;
+  library_scope: 'public' | 'user';
+  owner_user_id: string | null;
+  source_type: 'seed' | 'upload';
+  storage_provider: 'local' | 'oss';
+  storage_key: string | null;
+  status: string;
   created_at: string;
+  last_used_at: string | null;
 }
 
 /** Look 单品 */

@@ -17,7 +17,7 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.backend.database import Base, SessionLocal, engine
+from src.backend.database import Base, SessionLocal, create_tables as ensure_tables, engine
 from src.backend.models import (
     Asset,
     Content,
@@ -25,6 +25,7 @@ from src.backend.models import (
     Look,
     LookItem,
     Project,
+    ProjectAsset,
     Shot,
     TryOnTask,
 )
@@ -70,38 +71,52 @@ def seed_assets_for_project(db, project_id: str) -> int:
     with SEED_ASSET_FILE.open(encoding="utf-8") as handle:
         records = json.load(handle)
 
-    existing_urls = {
-        row[0]
-        for row in db.query(Asset.url)
-        .filter(Asset.project_id == project_id)
-        .all()
+    existing_by_url = {
+        asset.url: asset
+        for asset in db.query(Asset).filter(Asset.library_scope == "public").all()
     }
 
     created = 0
     for record in records:
         url = record.get("url")
-        if not url or url in existing_urls:
+        if not url:
             continue
 
-        db.add(
-            Asset(
+        asset = existing_by_url.get(url)
+        if asset is None:
+            asset = Asset(
                 project_id=project_id,
                 url=url,
                 thumbnail_url=url,
                 category=record.get("category") or "product",
                 tags=_seed_asset_tags(record),
                 original_filename=record.get("display_name"),
+                library_scope="public",
+                owner_user_id=None,
+                source_type="seed",
+                storage_provider="oss" if str(url).startswith("http") else "local",
+                storage_key=None,
+                status="active",
             )
+            db.add(asset)
+            db.flush()
+            existing_by_url[url] = asset
+            created += 1
+
+        linked = (
+            db.query(ProjectAsset)
+            .filter(ProjectAsset.project_id == project_id, ProjectAsset.asset_id == asset.id)
+            .first()
         )
-        existing_urls.add(url)
-        created += 1
+        if linked is None:
+            db.add(ProjectAsset(project_id=project_id, asset_id=asset.id))
 
     return created
 
 
 def create_tables():
     print("Creating tables...")
-    Base.metadata.create_all(bind=engine)
+    ensure_tables()
     print("Tables created:")
     for table_name in Base.metadata.tables:
         print(f"  - {table_name}")

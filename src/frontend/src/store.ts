@@ -17,9 +17,11 @@ import {
   deleteProject,
   duplicateProject,
   fetchProjects,
+  fetchShot,
   fetchWorkspace,
   generateLooks,
   generateShot,
+  linkAssetToProject,
   publishContent,
   updateProjectCanvasState,
   updateShot,
@@ -135,11 +137,13 @@ interface SparkStore {
   projects: ProjectDetail[];
   activeProject: ProjectDetail | null;
   assets: Asset[];
+  libraryAssets: Asset[];
   looks: Look[];
   shots: Shot[];
   projectCanvasState: CanvasDraftState | null;
   publishedLookIds: string[];
-  activeCategory: Asset['category'];
+  activeCategory: 'all' | Asset['category'];
+  activeLibraryScope: 'public' | 'user';
   selectedPublishShotIds: string[];
   selectedLookId: string | null;
   loadingProjects: boolean;
@@ -152,12 +156,14 @@ interface SparkStore {
   deleteProjectById: (projectId: string) => Promise<void>;
   renameProject: (projectId: string, name: string) => Promise<ProjectDetail>;
   loadWorkspace: (projectId: string) => Promise<void>;
-  setActiveCategory: (category: Asset['category']) => void;
+  setActiveCategory: (category: 'all' | Asset['category']) => void;
+  setActiveLibraryScope: (scope: 'public' | 'user') => void;
   uploadAssetFiles: (
     projectId: string,
     files: File[],
     category: Asset['category']
   ) => Promise<Asset[]>;
+  ensureAssetLinked: (projectId: string, assetId: string) => Promise<Asset>;
   updateAssetMeta: (assetId: string, payload: { category?: Asset['category']; tags?: Asset['tags'] }) => Promise<Asset>;
   deleteAssetById: (assetId: string) => Promise<void>;
   upsertLook: (look: Look) => void;
@@ -177,6 +183,7 @@ interface SparkStore {
       customPrompt?: string;
       referenceImageUrl?: string;
       parameters?: Record<string, string | number | boolean | null>;
+      pendingCanvasPosition?: NonNullable<Shot['canvas_position']>;
     }
   ) => Promise<Shot>;
   setSelectedLookId: (lookId: string | null) => void;
@@ -203,6 +210,17 @@ interface SparkStore {
   ) => Promise<Content>;
 }
 
+type SparkStoreSetter = {
+  (
+    partial:
+      | SparkStore
+      | Partial<SparkStore>
+      | ((state: SparkStore) => SparkStore | Partial<SparkStore>),
+    replace?: false
+  ): void;
+  (state: SparkStore | ((state: SparkStore) => SparkStore), replace: true): void;
+};
+
 function upsertById<T extends { id: string }>(items: T[], nextItem: T): T[] {
   const existingIndex = items.findIndex((item) => item.id === nextItem.id);
   if (existingIndex === -1) return [nextItem, ...items];
@@ -212,6 +230,10 @@ function upsertById<T extends { id: string }>(items: T[], nextItem: T): T[] {
   return nextItems;
 }
 
+function upsertManyById<T extends { id: string }>(items: T[], nextItems: T[]): T[] {
+  return nextItems.reduce((acc, item) => upsertById(acc, item), items);
+}
+
 function sortProjectsByUpdatedAt(projects: ProjectDetail[]): ProjectDetail[] {
   return [...projects].sort(
     (left, right) =>
@@ -219,15 +241,89 @@ function sortProjectsByUpdatedAt(projects: ProjectDetail[]): ProjectDetail[] {
   );
 }
 
+const SHOT_POLL_INTERVAL_MS = 2500;
+const activeShotPollSessions = new Map<string, number>();
+
+function startShotPolling(
+  shotId: string,
+  setStore: SparkStoreSetter
+) {
+  const sessionId = Date.now() + Math.floor(Math.random() * 1000);
+  activeShotPollSessions.set(shotId, sessionId);
+
+  void (async () => {
+    try {
+      while (activeShotPollSessions.get(shotId) === sessionId) {
+        await new Promise((resolve) => window.setTimeout(resolve, SHOT_POLL_INTERVAL_MS));
+        if (activeShotPollSessions.get(shotId) !== sessionId) {
+          return;
+        }
+
+        const latestShot = await fetchShot(shotId);
+        setStore((state: SparkStore) => ({ shots: upsertById(state.shots, latestShot) }));
+
+        if (latestShot.status === 'completed' || latestShot.status === 'failed') {
+          activeShotPollSessions.delete(shotId);
+          return;
+        }
+      }
+    } catch (error) {
+      activeShotPollSessions.delete(shotId);
+      setStore({
+        error: error instanceof Error ? error.message : '结果轮询失败',
+      });
+    }
+  })();
+}
+
+function buildPendingShot(
+  look: Look | undefined,
+  lookId: string,
+  options: {
+    type?: 'image' | 'video';
+    action: 'change_model' | 'change_background' | 'tryon' | 'custom';
+    presetId?: string;
+    customPrompt?: string;
+    referenceImageUrl?: string;
+    parameters?: Record<string, string | number | boolean | null>;
+    pendingCanvasPosition?: NonNullable<Shot['canvas_position']>;
+  }
+): Shot {
+  const fallbackPreview = options.referenceImageUrl ?? look?.items.find((item) => item.asset_url)?.asset_url ?? null;
+  const pendingId = `pending-shot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    id: pendingId,
+    look_id: lookId,
+    content_id: null,
+    type: options.type ?? 'image',
+    url: null,
+    thumbnail_url: fallbackPreview,
+    prompt: options.customPrompt ?? look?.description ?? '',
+    parameters: {
+      action: options.action,
+      preset_id: options.presetId ?? null,
+      input_images: fallbackPreview ? [fallbackPreview] : [],
+      parameters: options.parameters ?? {},
+    },
+    vendor: null,
+    status: 'processing',
+    adopted: false,
+    canvas_position: options.pendingCanvasPosition ?? null,
+    created_at: new Date().toISOString(),
+  };
+}
+
 export const useSparkStore = create<SparkStore>((set, get) => ({
   projects: [],
   activeProject: null,
   assets: [],
+  libraryAssets: [],
   looks: [],
   shots: [],
   projectCanvasState: null,
   publishedLookIds: [],
-  activeCategory: 'product',
+  activeCategory: 'all',
+  activeLibraryScope: 'public',
   selectedPublishShotIds: [],
   selectedLookId: null,
   loadingProjects: false,
@@ -331,11 +427,15 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
         loadingWorkspace: false,
         activeProject: bundle.project,
         assets: bundle.assets,
+        libraryAssets: bundle.libraryAssets,
         looks: bundle.looks,
         shots: bundle.shots,
         projectCanvasState: bundle.canvasState,
         publishedLookIds: bundle.publishedLookIds,
       });
+      bundle.shots
+        .filter((shot) => shot.status === 'queued' || shot.status === 'processing')
+        .forEach((shot) => startShotPolling(shot.id, set));
     } catch (error) {
       set({
         loadingWorkspace: false,
@@ -346,6 +446,7 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
   },
 
   setActiveCategory: (category) => set({ activeCategory: category }),
+  setActiveLibraryScope: (scope) => set({ activeLibraryScope: scope }),
 
   uploadAssetFiles: async (projectId, files, category) => {
     set({ busy: true, error: null });
@@ -356,6 +457,7 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
       set((state) => ({
         busy: false,
         assets: [...createdAssets, ...state.assets],
+        libraryAssets: upsertManyById(state.libraryAssets, createdAssets),
         activeProject: state.activeProject
           ? { ...state.activeProject, asset_count: state.activeProject.asset_count + createdAssets.length }
           : state.activeProject,
@@ -367,6 +469,20 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
     }
   },
 
+  ensureAssetLinked: async (projectId, assetId) => {
+    const existing = get().assets.find((asset) => asset.id === assetId);
+    if (existing) return existing;
+    const linked = await linkAssetToProject(projectId, assetId);
+    set((state) => ({
+      assets: upsertById(state.assets, { ...linked, project_id: projectId }),
+      libraryAssets: upsertById(state.libraryAssets, linked),
+      activeProject: state.activeProject
+        ? { ...state.activeProject, asset_count: state.activeProject.asset_count + 1 }
+        : state.activeProject,
+    }));
+    return linked;
+  },
+
   updateAssetMeta: async (assetId, payload) => {
     set({ busy: true, error: null });
     try {
@@ -374,6 +490,7 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
       set((state) => ({
         busy: false,
         assets: state.assets.map((item) => (item.id === assetId ? asset : item)),
+        libraryAssets: state.libraryAssets.map((item) => (item.id === assetId ? asset : item)),
       }));
       return asset;
     } catch (error) {
@@ -390,6 +507,7 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
       set((state) => ({
         busy: false,
         assets: state.assets.filter((asset) => asset.id !== assetId),
+        libraryAssets: state.libraryAssets.filter((asset) => asset.id !== assetId),
         activeProject: state.activeProject
           ? {
               ...state.activeProject,
@@ -427,13 +545,32 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
   },
 
   generateShotForLook: async (projectId, lookId, options) => {
+    const look = get().looks.find((item) => item.id === lookId);
+    const pendingShot = buildPendingShot(look, lookId, options);
+    const { pendingCanvasPosition, ...requestOptions } = options;
     set({ busy: true, error: null });
+    set((state) => ({ shots: upsertById(state.shots, pendingShot) }));
     try {
-      const shot = await generateShot(projectId, lookId, options);
-      set((state) => ({ busy: false, shots: upsertById(state.shots, shot) }));
+      let shot = await generateShot(projectId, lookId, requestOptions);
+      if (pendingCanvasPosition) {
+        shot = await updateShot(shot.id, { canvasPosition: pendingCanvasPosition });
+      }
+      set((state) => ({
+        busy: false,
+        shots: upsertById(state.shots.filter((item) => item.id !== pendingShot.id), shot),
+      }));
+      if (shot.status === 'queued' || shot.status === 'processing') {
+        startShotPolling(shot.id, set);
+      } else {
+        activeShotPollSessions.delete(shot.id);
+      }
       return shot;
     } catch (error) {
-      set({ busy: false, error: error instanceof Error ? error.message : '拍摄生成失败' });
+      set((state) => ({
+        busy: false,
+        error: error instanceof Error ? error.message : '拍摄生成失败',
+        shots: state.shots.filter((item) => item.id !== pendingShot.id),
+      }));
       throw error;
     }
   },

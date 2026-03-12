@@ -1,3 +1,4 @@
+import * as fabric from 'fabric';
 import { Group, Rect, Shadow, Textbox, Image as FabricImage } from 'fabric';
 import type { FabricObject } from 'fabric';
 
@@ -11,6 +12,7 @@ export interface CanvasNodeConfig {
   prompt?: string;
   imageUrl?: string | null;
   statusText?: string | null;
+  loading?: boolean;
 }
 
 const NODE_SIZES: Record<CanvasNodeType, { width: number; height: number }> = {
@@ -21,6 +23,13 @@ const NODE_SIZES: Record<CanvasNodeType, { width: number; height: number }> = {
 
 const IMAGE_CORNER_RADIUS = 24;
 const IMAGE_TITLE_OFFSET = 34;
+const BlurFilterCtor = (
+  fabric as unknown as {
+    filters?: {
+      Blur?: new (options: { blur: number }) => unknown;
+    };
+  }
+).filters?.Blur;
 
 function getImageSourceSize(image: FabricImage, fallback: { width: number; height: number }) {
   const element = image.getElement() as
@@ -82,35 +91,50 @@ async function buildVisualLayer(
 
   if (config.type === 'image' && config.imageUrl) {
     try {
-      const clip = new Rect({
-        left: 0,
-        top: 0,
-        width: size.width,
-        height: size.height,
-        rx: IMAGE_CORNER_RADIUS,
-        ry: IMAGE_CORNER_RADIUS,
-        originX: 'center',
-        originY: 'center',
-      });
       const image = await FabricImage.fromURL(config.imageUrl, {
         ...(config.imageUrl.startsWith('data:') ? {} : { crossOrigin: 'anonymous' }),
       });
+      const sourceSize = getImageSourceSize(image, size);
       image.set({
+        width: sourceSize.width,
+        height: sourceSize.height,
         left: size.width / 2,
         top: size.height / 2,
         originX: 'center',
         originY: 'center',
         selectable: false,
         evented: false,
-        clipPath: clip,
       });
-      const sourceSize = getImageSourceSize(image, size);
-      // For look-item-node (fixed-size container), use cover to fill the whole area.
-      // For other image nodes we also upscale to fill the available area.
-      const scale = Math.max(size.width / sourceSize.width, size.height / sourceSize.height);
-      image.scale(scale);
+      const useCover = config.kind === 'look-item-node';
+      const scale = useCover
+        ? Math.max(size.width / sourceSize.width, size.height / sourceSize.height)
+        : Math.min(size.width / sourceSize.width, size.height / sourceSize.height);
+      image.set({
+        scaleX: scale,
+        scaleY: scale,
+      });
+      if (config.loading && BlurFilterCtor) {
+        image.filters = [new BlurFilterCtor({ blur: 0.35 })] as never[];
+        image.applyFilters();
+        image.set({
+          opacity: 0.88,
+        });
+      }
       image.set('name', 'media-image');
       objects.push(image);
+      if (config.loading) {
+        const loadingOverlay = new Rect({
+          left: 0,
+          top: size.height - 56,
+          width: size.width,
+          height: 56,
+          fill: 'rgba(8, 10, 14, 0.34)',
+          selectable: false,
+          evented: false,
+        });
+        loadingOverlay.set('name', 'loading-overlay');
+        objects.push(loadingOverlay);
+      }
       return objects;
     } catch {
       // Fall through to placeholder state.
@@ -205,19 +229,6 @@ export async function createCanvasNodeGroup(
   const size = await resolveNodeSize(config);
   const copy = nodeCopy(config.type);
 
-  const title = new Textbox(config.title ?? copy.title, {
-    left: 0,
-    top: -IMAGE_TITLE_OFFSET,
-    width: size.width,
-    fontSize: 14,
-    fontFamily: 'Avenir Next, SF Pro Display, PingFang SC, sans-serif',
-    fontWeight: '600',
-    fill: 'rgba(236, 238, 244, 0.86)',
-    selectable: false,
-    evented: false,
-  });
-  title.set('name', 'node-title');
-
   const shell = new Rect({
     left: 0,
     top: 0,
@@ -269,7 +280,22 @@ export async function createCanvasNodeGroup(
   typeBadge.set('name', 'type-badge');
 
   const visualLayer = await buildVisualLayer(config, size);
-  const objects: FabricObject[] = [title, shell, ...visualLayer, typeBadge];
+  const objects: FabricObject[] = [shell, ...visualLayer, typeBadge];
+  if (config.type !== 'image') {
+    const title = new Textbox(config.title ?? copy.title, {
+      left: 0,
+      top: -IMAGE_TITLE_OFFSET,
+      width: size.width,
+      fontSize: 14,
+      fontFamily: 'Avenir Next, SF Pro Display, PingFang SC, sans-serif',
+      fontWeight: '600',
+      fill: 'rgba(236, 238, 244, 0.86)',
+      selectable: false,
+      evented: false,
+    });
+    title.set('name', 'node-title');
+    objects.unshift(title);
+  }
   if (statusText) {
     objects.push(statusText);
   }
@@ -280,12 +306,23 @@ export async function createCanvasNodeGroup(
     originX: 'center',
     originY: 'center',
     hasControls: false,
-    hasBorders: true,
-    borderColor: 'rgba(126, 156, 255, 0.72)',
-    borderScaleFactor: 2.4,
-    padding: 4,
+    hasBorders: false,
     hoverCursor: 'pointer',
   });
+
+  if (config.type === 'image' && config.kind === 'look-item-node') {
+    group.clipPath = new Rect({
+      left: size.width / 2,
+      top: size.height / 2,
+      width: size.width,
+      height: size.height,
+      rx: IMAGE_CORNER_RADIUS,
+      ry: IMAGE_CORNER_RADIUS,
+      originX: 'center',
+      originY: 'center',
+      absolutePositioned: false,
+    });
+  }
 
   group.set('data', {
     kind: config.kind,
@@ -295,7 +332,8 @@ export async function createCanvasNodeGroup(
     prompt: config.prompt ?? '',
     imageUrl: config.imageUrl ?? null,
     statusText: config.statusText ?? null,
-    toolbarAnchorOffsetTop: config.type === 'image' ? IMAGE_TITLE_OFFSET : 0,
+    loading: config.loading ?? false,
+    toolbarAnchorOffsetTop: config.type === 'image' ? 0 : IMAGE_TITLE_OFFSET,
   });
 
   return group;

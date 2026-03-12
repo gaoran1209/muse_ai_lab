@@ -21,6 +21,9 @@ from pydantic import BaseModel, Field
 # ===========================================================================
 
 AssetCategory = Literal["product", "model", "background", "pose"]
+AssetLibraryScope = Literal["public", "user"]
+AssetSourceType = Literal["seed", "upload"]
+StorageProvider = Literal["local", "oss"]
 ShotType = Literal["image", "video"]
 TaskStatus = Literal["queued", "processing", "completed", "failed"]
 InteractionType = Literal["like", "favorite", "comment"]
@@ -83,27 +86,52 @@ class ProjectResponse(ProjectBrief):
 
 class AssetCreate(BaseModel):
     """Used internally after file upload + OSS storage."""
+    project_id: str | None = None
     url: str
     thumbnail_url: str | None = None
     category: AssetCategory = "product"
     tags: AssetTags | None = None
     original_filename: str | None = None
+    library_scope: AssetLibraryScope = "user"
+    owner_user_id: str | None = None
+    source_type: AssetSourceType = "upload"
+    storage_provider: StorageProvider = "local"
+    storage_key: str | None = None
+    status: str = "active"
 
 
 class AssetUpdate(BaseModel):
     category: AssetCategory | None = None
     tags: AssetTags | None = None
+    original_filename: str | None = None
+
+
+class AssetLinkRequest(BaseModel):
+    asset_id: str
+
+
+class AssetLibraryQuery(BaseModel):
+    scope: Literal["public", "user", "all"] = "all"
+    category: AssetCategory | None = None
+    owner_user_id: str = "demo_user_001"
 
 
 class AssetResponse(BaseModel):
     id: str
-    project_id: str
+    project_id: str | None
     url: str
     thumbnail_url: str | None
     category: str
     tags: AssetTags | None
     original_filename: str | None
+    library_scope: AssetLibraryScope = "user"
+    owner_user_id: str | None = None
+    source_type: AssetSourceType = "upload"
+    storage_provider: StorageProvider = "local"
+    storage_key: str | None = None
+    status: str = "active"
     created_at: datetime
+    last_used_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

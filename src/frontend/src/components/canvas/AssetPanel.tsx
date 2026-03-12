@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Asset, AssetTags } from '../../types';
 import './AssetPanel.css';
 
-const CATEGORIES: Array<{ value: Asset['category']; label: string }> = [
+const LIBRARY_SCOPES: Array<{ value: 'public' | 'user'; label: string }> = [
+  { value: 'public', label: '公共' },
+  { value: 'user', label: '我的' },
+];
+
+const CATEGORIES: Array<{ value: 'all' | Asset['category']; label: string }> = [
+  { value: 'all', label: '全部' },
   { value: 'product', label: '商品' },
   { value: 'model', label: '模特' },
   { value: 'background', label: '背景' },
@@ -11,11 +17,15 @@ const CATEGORIES: Array<{ value: Asset['category']; label: string }> = [
 
 interface AssetPanelProps {
   open: boolean;
-  assets: Asset[];
-  activeCategory: Asset['category'];
+  libraryAssets: Asset[];
+  linkedAssetIds: string[];
+  activeCategory: 'all' | Asset['category'];
+  activeLibraryScope: 'public' | 'user';
   busy: boolean;
-  onCategoryChange: (category: Asset['category']) => void;
+  onCategoryChange: (category: 'all' | Asset['category']) => void;
+  onLibraryScopeChange: (scope: 'public' | 'user') => void;
   onUpload: (files: FileList | null) => void;
+  onEnsureLinked: (assetId: string) => void;
   onDeleteAsset: (assetId: string) => void;
   onUpdateAsset: (assetId: string, payload: { category?: Asset['category']; tags?: AssetTags }) => void;
   onToggleOpen: () => void;
@@ -54,11 +64,15 @@ function AssetImage({
 
 export function AssetPanel({
   open,
-  assets,
+  libraryAssets,
+  linkedAssetIds,
   activeCategory,
+  activeLibraryScope,
   busy,
   onCategoryChange,
+  onLibraryScopeChange,
   onUpload,
+  onEnsureLinked,
   onDeleteAsset,
   onUpdateAsset,
   onToggleOpen,
@@ -74,10 +88,14 @@ export function AssetPanel({
     season: '',
     occasion: '',
   });
-  const visibleAssets = assets.filter((asset) => asset.category === activeCategory);
+  const visibleAssets = libraryAssets.filter((asset) => {
+    if (asset.library_scope !== activeLibraryScope) return false;
+    if (activeCategory === 'all') return true;
+    return asset.category === activeCategory;
+  });
   const editingAsset = useMemo(
-    () => assets.find((asset) => asset.id === editingAssetId) ?? null,
-    [assets, editingAssetId]
+    () => libraryAssets.find((asset) => asset.id === editingAssetId) ?? null,
+    [libraryAssets, editingAssetId]
   );
 
   useEffect(() => {
@@ -126,6 +144,19 @@ export function AssetPanel({
           </div>
 
           <div className="asset-tabs" role="tablist" aria-label="Asset categories">
+            {LIBRARY_SCOPES.map((scope) => (
+              <button
+                key={scope.value}
+                type="button"
+                className={scope.value === activeLibraryScope ? 'is-active' : ''}
+                onClick={() => onLibraryScopeChange(scope.value)}
+              >
+                {scope.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="asset-tabs asset-tabs-secondary" role="tablist" aria-label="Asset categories">
             {CATEGORIES.map((category) => (
               <button
                 key={category.value}
@@ -154,6 +185,9 @@ export function AssetPanel({
                         label: asset.original_filename ?? asset.id,
                       })
                     );
+                    if (!linkedAssetIds.includes(asset.id)) {
+                      onEnsureLinked(asset.id);
+                    }
                     event.dataTransfer.effectAllowed = 'copy';
                   }}
                 >
@@ -170,18 +204,20 @@ export function AssetPanel({
                   <button type="button" onClick={() => setEditingAssetId(asset.id)}>
                     标签
                   </button>
-                  <button
-                    type="button"
-                    className="is-danger"
-                    onClick={() => {
-                      const confirmed = window.confirm(`确认删除素材“${asset.original_filename ?? asset.id}”？`);
-                      if (confirmed) {
-                        onDeleteAsset(asset.id);
-                      }
-                    }}
-                  >
-                    删除
-                  </button>
+                  {asset.library_scope === 'user' ? (
+                    <button
+                      type="button"
+                      className="is-danger"
+                      onClick={() => {
+                        const confirmed = window.confirm(`确认删除素材“${asset.original_filename ?? asset.id}”？`);
+                        if (confirmed) {
+                          onDeleteAsset(asset.id);
+                        }
+                      }}
+                    >
+                      删除
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}

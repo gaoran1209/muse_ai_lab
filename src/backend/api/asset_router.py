@@ -7,11 +7,11 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from src.backend.database import get_db
-from src.backend.schemas import AssetResponse, AssetUpdate
+from src.backend.schemas import AssetLinkRequest, AssetResponse, AssetUpdate
 from src.backend.services.asset_service import AssetService
 
 router = APIRouter(tags=["assets"])
@@ -89,6 +89,32 @@ async def upload_assets(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.post("/api/v1/assets/library/upload", response_model=list[AssetResponse], status_code=status.HTTP_201_CREATED)
+async def upload_library_assets(
+    project_id: str = Form(...),
+    owner_user_id: str = Form(default="demo_user_001"),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+) -> list[AssetResponse]:
+    try:
+        payload = [(upload.filename or "asset.bin", upload.content_type, await upload.read()) for upload in files]
+        return AssetService.upload_library_assets(db, project_id, payload, owner_user_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/v1/assets/library", response_model=list[AssetResponse])
+def list_library_assets(
+    scope: str = Query(default="all"),
+    category: str | None = Query(default=None),
+    owner_user_id: str = Query(default="demo_user_001"),
+    db: Session = Depends(get_db),
+) -> list[AssetResponse]:
+    return AssetService.list_library_assets(db, scope=scope, category=category, owner_user_id=owner_user_id)
+
+
 @router.get("/api/v1/projects/{project_id}/assets", response_model=list[AssetResponse])
 def list_assets(
     project_id: str,
@@ -99,6 +125,23 @@ def list_assets(
         return AssetService.list_assets(db, project_id, category)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Project not found") from exc
+
+
+@router.post("/api/v1/projects/{project_id}/assets/link", response_model=AssetResponse, status_code=status.HTTP_201_CREATED)
+def link_asset(project_id: str, payload: AssetLinkRequest, db: Session = Depends(get_db)) -> AssetResponse:
+    try:
+        return AssetService.link_asset_to_project(db, project_id, payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Project or asset not found") from exc
+
+
+@router.delete("/api/v1/projects/{project_id}/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_asset(project_id: str, asset_id: str, db: Session = Depends(get_db)) -> Response:
+    try:
+        AssetService.unlink_asset_from_project(db, project_id, asset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Project or asset link not found") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/api/v1/assets/{asset_id}", response_model=AssetResponse)
@@ -115,4 +158,6 @@ def delete_asset(asset_id: str, db: Session = Depends(get_db)) -> Response:
         AssetService.delete_asset(db, asset_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Asset not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

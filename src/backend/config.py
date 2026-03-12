@@ -76,10 +76,26 @@ class Config:
     # =============================================================================
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/muse.db")
     MEDIA_ROOT = os.getenv("MEDIA_ROOT", "data/uploads")
+    OSS_ENDPOINT = _clean_secret("OSS_ENDPOINT")
+    OSS_BUCKET_NAME = _clean_secret("OSS_BUCKET_NAME")
+    OSS_ACCESS_KEY_ID = _clean_secret("OSS_ACCESS_KEY_ID")
+    OSS_SECRET_ACCESS_KEY = _clean_secret("OSS_SECRET_ACCESS_KEY")
+    OSS_DISPLAY_HOST = _clean_secret("OSS_DISPLAY_HOST")
+    OSS_REMOTE_DIR = os.getenv("OSS_REMOTE_DIR", "upload")
 
     # Debug 模式
     # =============================================================================
     DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() in ("true", "1", "on")
+
+    @property
+    def oss_enabled(self) -> bool:
+        required = (
+            self.OSS_ENDPOINT,
+            self.OSS_BUCKET_NAME,
+            self.OSS_ACCESS_KEY_ID,
+            self.OSS_SECRET_ACCESS_KEY,
+        )
+        return all(required)
 
 # 导出配置实例或直接导出变量
 config = Config()

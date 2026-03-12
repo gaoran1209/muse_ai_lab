@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session, selectinload
 
-from src.backend.models import Asset, Look, LookItem, Project, Shot
+from src.backend.models import Look, LookItem, Project, ProjectAsset, Shot
 from src.backend.schemas import ProjectCanvasStateResponse, ProjectCanvasStateUpdate, ProjectCreate, ProjectResponse, ProjectUpdate
 from src.backend.services._helpers import dumps_json, loads_json, project_to_response, safe_text
 
@@ -92,6 +92,7 @@ class ProjectService:
             db.query(Project)
             .options(
                 selectinload(Project.assets),
+                selectinload(Project.asset_links),
                 selectinload(Project.looks).selectinload(Look.items),
                 selectinload(Project.looks).selectinload(Look.shots),
             )
@@ -109,19 +110,8 @@ class ProjectService:
         db.add(duplicate)
         db.flush()
 
-        asset_id_map: dict[str, str] = {}
-        for asset in source.assets:
-            copied_asset = Asset(
-                project_id=duplicate.id,
-                url=asset.url,
-                thumbnail_url=asset.thumbnail_url,
-                category=asset.category,
-                tags=asset.tags,
-                original_filename=asset.original_filename,
-            )
-            db.add(copied_asset)
-            db.flush()
-            asset_id_map[asset.id] = copied_asset.id
+        for link in source.asset_links:
+            db.add(ProjectAsset(project_id=duplicate.id, asset_id=link.asset_id))
 
         for look in source.looks:
             copied_look = Look(
@@ -138,7 +128,7 @@ class ProjectService:
                 db.add(
                     LookItem(
                         look_id=copied_look.id,
-                        asset_id=asset_id_map.get(item.asset_id) if item.asset_id else None,
+                        asset_id=item.asset_id,
                         category=item.category,
                         placeholder_desc=item.placeholder_desc,
                         sort_order=item.sort_order,

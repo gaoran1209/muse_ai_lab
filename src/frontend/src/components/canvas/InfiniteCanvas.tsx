@@ -42,7 +42,12 @@ interface InfiniteCanvasProps {
   ) => void;
   onUploadFiles: (files: File[]) => Promise<void> | void;
   onReplaceLookItemAsset: (lookId: string, itemId: string, assetId: string) => void;
-  onQuickAction?: (action: QuickAction, imageUrl: string | null) => void;
+  onQuickAction?: (
+    action: QuickAction,
+    imageUrl: string | null,
+    targetPosition: { x: number; y: number } | null,
+    lookId: string | null
+  ) => void;
 }
 
 interface ToolbarSelection {
@@ -160,6 +165,26 @@ function defaultShotPosition(frame: FramePosition, shotIndex: number): Position 
     x: frame.x + frame.width + 160 + column * (size.width + 64),
     y: frame.y + 110 + row * (size.height + 52),
   };
+}
+
+function pendingShotPreviewUrl(shot: Shot, look: Look | undefined): string | null {
+  const inputImages = Array.isArray(shot.parameters?.input_images)
+    ? shot.parameters.input_images.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+  if (inputImages[0]) {
+    return inputImages[0];
+  }
+  return look?.items.find((item) => item.asset_url)?.asset_url ?? null;
+}
+
+function shotStatusText(shot: Shot) {
+  if (shot.status === 'queued' || shot.status === 'processing') {
+    return '生成中...';
+  }
+  if (shot.status === 'failed') {
+    return '生成失败';
+  }
+  return shot.adopted ? '已采纳' : '待确认';
 }
 
 function readImageFile(file: File) {
@@ -811,11 +836,16 @@ export function InfiniteCanvas({
 
       const shotIndexByLook = new Map<string, number>();
       for (const shot of shotsWithOverrides) {
-        const frame = looksWithOverrides.find((look) => look.id === shot.look_id)?.frame;
+        const look = looksWithOverrides.find((item) => item.id === shot.look_id);
+        const frame = look?.frame;
         if (!frame) continue;
         const index = shotIndexByLook.get(shot.look_id) ?? 0;
         shotIndexByLook.set(shot.look_id, index + 1);
         const position = shot.position ?? defaultShotPosition(frame, index);
+        const previewUrl =
+          shot.type === 'image'
+            ? shot.thumbnail_url ?? shot.url ?? pendingShotPreviewUrl(shot, look)
+            : null;
         const node = await createCanvasNodeGroup(
           {
             kind: 'shot-node',
@@ -823,8 +853,9 @@ export function InfiniteCanvas({
             type: shot.type,
             title: shot.type === 'video' ? 'Video' : 'Image',
             prompt: shot.prompt ?? '',
-            imageUrl: shot.type === 'image' ? shot.thumbnail_url ?? shot.url : null,
-            statusText: shot.adopted ? '已采纳' : '待确认',
+            imageUrl: previewUrl,
+            statusText: shotStatusText(shot),
+            loading: shot.status === 'queued' || shot.status === 'processing',
           },
           position.x,
           position.y
@@ -1391,7 +1422,20 @@ export function InfiniteCanvas({
           }}
           onQuickAction={(action) => {
             const imageUrl = toolbarSelection?.data?.imageUrl as string | null ?? null;
-            onQuickAction?.(action, imageUrl);
+            const selectedId = toolbarSelection?.ids[0] ?? null;
+            const selectedObject = canvas?.getActiveObject();
+            const targetPosition =
+              selectedObject && typeof selectedObject.left === 'number' && typeof selectedObject.top === 'number'
+                ? {
+                    x: selectedObject.left + selectedObject.getScaledWidth() + 56,
+                    y: selectedObject.top,
+                  }
+                : null;
+            const parentLookId =
+              toolbarSelection?.kind === 'look-item-node' && selectedId
+                ? looks.find((look) => look.items.some((item) => item.id === selectedId))?.id ?? null
+                : null;
+            onQuickAction?.(action, imageUrl, targetPosition, parentLookId);
           }}
         />
       ) : null}

@@ -2,7 +2,7 @@
 SQLAlchemy ORM models for the MUSE AI Lab domain.
 
 Entity relationships:
-    Project 1--N Asset
+    Project N--N Asset (via ProjectAsset)
     Project 1--N Look 1--N LookItem
     Look    1--N Shot
     Shot    N--1 Content 1--N Interaction
@@ -40,7 +40,17 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
-    assets: Mapped[list["Asset"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    assets: Mapped[list["Asset"]] = relationship(
+        secondary="project_assets",
+        back_populates="projects",
+        overlaps="asset_links,project_links,project,asset",
+    )
+    asset_links: Mapped[list["ProjectAsset"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        overlaps="assets,projects",
+    )
     looks: Mapped[list["Look"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
@@ -58,10 +68,40 @@ class Asset(Base):
     category: Mapped[str] = mapped_column(String(20), nullable=False, default="product")
     tags: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
     original_filename: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    library_scope: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    owner_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False, default="upload")
+    storage_provider: Mapped[str] = mapped_column(String(20), nullable=False, default="local")
+    storage_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    project: Mapped["Project"] = relationship()
+    projects: Mapped[list["Project"]] = relationship(
+        secondary="project_assets",
+        back_populates="assets",
+        overlaps="asset_links,project_links,project,asset",
+    )
+    project_links: Mapped[list["ProjectAsset"]] = relationship(
+        back_populates="asset",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        overlaps="assets,projects",
+    )
+    look_items: Mapped[list["LookItem"]] = relationship(back_populates="asset")
+
+
+class ProjectAsset(Base):
+    __tablename__ = "project_assets"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String(32), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    asset_id: Mapped[str] = mapped_column(String(32), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
-    project: Mapped["Project"] = relationship(back_populates="assets")
-    look_items: Mapped[list["LookItem"]] = relationship(back_populates="asset")
+    project: Mapped["Project"] = relationship(back_populates="asset_links", overlaps="assets,projects")
+    asset: Mapped["Asset"] = relationship(back_populates="project_links", overlaps="assets,projects")
 
 
 # ---------------------------------------------------------------------------

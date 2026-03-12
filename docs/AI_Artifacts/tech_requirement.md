@@ -242,10 +242,13 @@ src/backend/api/
 
 | 方法 | 端点 | 说明 |
 |------|------|------|
-| POST | `/api/v1/projects/{id}/assets` | 上传素材（支持批量），自动触发打标 |
-| GET | `/api/v1/projects/{id}/assets` | 素材列表，支持 `?category=product` 筛选 |
+| GET | `/api/v1/assets/library` | 素材库列表，支持 `?scope=public|user|all&category=product&owner_user_id=demo_user_001` |
+| POST | `/api/v1/assets/library/upload` | 上传到“我的素材库”，自动打标；优先上传 OSS，未配置时回退本地 `/media` |
+| GET | `/api/v1/projects/{id}/assets` | 当前项目已引用的素材列表，支持 `?category=product` 筛选 |
+| POST | `/api/v1/projects/{id}/assets/link` | 把素材库中的现有素材关联到当前项目 |
 | PATCH | `/api/v1/assets/{id}` | 更新素材标签（人工修正） |
-| DELETE | `/api/v1/assets/{id}` | 删除素材 |
+| DELETE | `/api/v1/projects/{id}/assets/{asset_id}` | 从当前项目取消素材引用 |
+| DELETE | `/api/v1/assets/{id}` | 删除“我的素材”主记录及存储文件；公共素材禁止删除 |
 
 #### Look（AI 搭配）
 
@@ -362,9 +365,15 @@ src/backend/services/
 
 ```
 上传流程:
-1. 接收图片文件 → OSS 上传 → 获取 URL
-2. 调用 LLM (multimodal) 分析图片 → 返回标签 JSON
-3. 写入 Asset 表
+1. 接收图片文件 → 落本地临时文件
+2. 若 OSS 配置有效，则上传 OSS 并记录永久 URL；若未配置或上传失败，则回退本地 `/media`
+3. 调用 LLM (multimodal) 分析图片 → 返回标签 JSON
+4. 写入 Asset 表，并为当前 Project 建立 `ProjectAsset` 引用
+
+约定:
+- Demo 阶段默认用户固定为 `demo_user_001`
+- `storage_provider=oss` 时，`url/thumbnail_url` 返回云端 URL，`storage_key` 为 OSS 对象 key
+- `storage_provider=local` 时，`url/thumbnail_url` 返回 `/media/...`，`storage_key` 为相对 `MEDIA_ROOT` 的路径
 ```
 
 **自动打标 prompt 要点**:

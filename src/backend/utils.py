@@ -26,6 +26,17 @@ def _build_default_oss_config() -> str:
 DEFAULT_OSS_CONFIG = _build_default_oss_config()
 
 
+def has_usable_oss_config(config: str | None) -> bool:
+    if not config:
+        return False
+    try:
+        payload = json.loads(config)
+    except json.JSONDecodeError:
+        return False
+    required = ("endpoint", "bucket_name", "access_key_id", "secret_access_key")
+    return all(str(payload.get(key, "")).strip() for key in required)
+
+
 class BucketCommand:
 
     def __init__(self, *, endpoint, bucket_name, access_key_id, secret_access_key, display_host, remote_dir):
@@ -46,7 +57,7 @@ class BucketCommand:
 
     @classmethod
     def from_str_config(cls, config):
-        if not config:
+        if not has_usable_oss_config(config):
             return None
         json_config = json.loads(config)
         instance = cls(**json_config)
@@ -92,6 +103,8 @@ def trans_url(old_url, oss_config=None):
         oss_config = DEFAULT_OSS_CONFIG
 
     oss_client = BucketCommand.from_str_config(oss_config)
+    if oss_client is None:
+        raise ValueError("OSS is not configured.")
     file_name = oss_client.extract_filename_from_url(old_url)
     ext = str(os.path.splitext(file_name)[1]).lstrip('.')
     response = requests.get(old_url, stream=True)
@@ -113,6 +126,8 @@ def upload_local_image(local_file_path, oss_config=None):
         oss_config = DEFAULT_OSS_CONFIG
 
     oss_client = BucketCommand.from_str_config(oss_config)
+    if oss_client is None:
+        raise ValueError("OSS is not configured.")
 
     # 获取文件扩展名
     _, ext = os.path.splitext(local_file_path)
