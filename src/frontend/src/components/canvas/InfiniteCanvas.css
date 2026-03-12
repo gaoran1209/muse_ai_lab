@@ -28,15 +28,14 @@
 
 .canvas-sidebar {
   position: fixed;
-  left: 316px;
-  top: 50%;
-  transform: translateY(-50%);
+  left: 18px;
+  bottom: 18px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
-  padding: 8px 7px;
-  border-radius: 18px;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(23, 23, 27, 0.88);
   backdrop-filter: blur(18px) saturate(140%);
@@ -45,9 +44,9 @@
 }
 
 .sidebar-divider {
-  width: 20px;
-  height: 1px;
-  margin: 2px 0;
+  width: 1px;
+  height: 22px;
+  margin: 0 2px;
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -83,9 +82,9 @@
 .sidebar-button::after {
   content: attr(data-tip);
   position: absolute;
-  left: calc(100% + 12px);
-  top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
   padding: 5px 9px;
   border-radius: 999px;
   background: rgba(23, 23, 27, 0.94);
@@ -103,7 +102,7 @@
 }
 
 .zoom-display {
-  width: 40px;
+  min-width: 42px;
   text-align: center;
   color: rgba(220, 226, 236, 0.4);
   font-size: 10px;
@@ -112,7 +111,7 @@
 }
 
 .canvas-busy-indicator {
-  margin-top: 4px;
+  margin-left: 2px;
   color: #92c7ff;
   font-size: 10px;
   letter-spacing: 0.16em;
@@ -198,5 +197,6 @@
 @media (max-width: 1120px) {
   .canvas-sidebar {
     left: 18px;
+    bottom: 14px;
   }
 }

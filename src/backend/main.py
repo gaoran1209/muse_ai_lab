@@ -5,15 +5,19 @@ Muse AI Studio 后端服务主入口。
 """
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.backend.api import router
+from src.backend.config import config
 from src.backend.database import create_tables
 from src.backend.logger import get_logger
 
 logger = get_logger(__name__)
+Path(config.MEDIA_ROOT).mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
@@ -21,6 +25,7 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     logger.info("Starting Muse AI Lab backend...")
     create_tables()
+    Path(config.MEDIA_ROOT).mkdir(parents=True, exist_ok=True)
     logger.info("Database tables ready.")
     yield
     logger.info("Shutting down Muse AI Lab backend...")
@@ -45,6 +50,7 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(router)
+app.mount("/media", StaticFiles(directory=config.MEDIA_ROOT), name="media")
 
 
 # 根路径

@@ -22,7 +22,6 @@
 ### 2.1 LLM
 
 - `src/backend/providers/llm/gemini.py`
-- `src/backend/providers/llm/zhipu.py`
 - `src/backend/providers/llm/ai302.py`
 
 ### 2.2 Image

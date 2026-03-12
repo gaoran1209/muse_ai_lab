@@ -244,6 +244,46 @@ export interface Shot {
   created_at: string;
 }
 
+export interface CanvasGenerationMeta {
+  mode: 'image' | 'video';
+  vendor: string;
+  parameters: Record<string, unknown>;
+  prompt: string;
+}
+
+export interface CanvasLocalNode {
+  id: string;
+  kind: 'prompt-node' | 'asset-image';
+  type: 'text' | 'image' | 'video';
+  label: string;
+  prompt: string;
+  x: number;
+  y: number;
+  imageUrl?: string | null;
+  statusText?: string | null;
+  generation?: CanvasGenerationMeta | null;
+}
+
+export interface CanvasLocalBoard {
+  id: string;
+  name: string;
+  prompt: string;
+  frame: { x: number; y: number; width: number; height: number };
+  itemIds: string[];
+}
+
+export interface CanvasDraftState {
+  version: number;
+  lookPromptOverrides: Record<string, string>;
+  lookFrameOverrides: Record<string, { x: number; y: number; width: number; height: number }>;
+  shotPositionOverrides: Record<string, { x: number; y: number }>;
+  hiddenLookIds: string[];
+  hiddenLookItemIds: string[];
+  hiddenShotIds: string[];
+  localNodes: CanvasLocalNode[];
+  localBoards: CanvasLocalBoard[];
+}
+
 /** 发布内容 */
 export interface Content {
   id: string;

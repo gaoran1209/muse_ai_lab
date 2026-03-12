@@ -89,6 +89,7 @@ Content 1──N TryOnTask (试穿任务)
 | id | UUID (PK) | 主键 |
 | name | VARCHAR(200) | 方案名称 |
 | cover_url | TEXT | 封面图 URL（取最新采纳图） |
+| canvas_state | JSON | 画布草稿状态，保存本地图片节点/分组/隐藏状态/prompt 覆盖/位置覆盖 |
 | created_at | DATETIME | 创建时间 |
 | updated_at | DATETIME | 最后修改时间 |
 
@@ -97,13 +98,28 @@ Content 1──N TryOnTask (试穿任务)
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID (PK) | 主键 |
-| project_id | UUID (FK) | 所属方案 |
-| url | TEXT | OSS 永久 URL |
+| library_scope | VARCHAR(20) | 素材库归属: `public` / `user` |
+| owner_user_id | VARCHAR(64, nullable) | 用户归属；Demo 阶段固定为 `demo_user_001`，公共素材为 `null` |
+| source_type | VARCHAR(20) | 来源类型: `seed` / `upload` |
+| storage_provider | VARCHAR(20) | 存储方式: `local` / `oss` |
+| storage_key | TEXT (nullable) | 云端或本地存储 key |
+| url | TEXT | 原图 URL |
 | thumbnail_url | TEXT | 缩略图 URL |
 | category | VARCHAR(20) | 分类: product/model/background/pose |
 | tags | JSON | 自动打标结果: `{category, color, style, season, occasion}` |
 | original_filename | VARCHAR(200) | 原始文件名 |
+| status | VARCHAR(20) | `active` / `processing` / `failed` / `deleted` |
 | created_at | DATETIME | 上传时间 |
+| last_used_at | DATETIME (nullable) | 最近一次被项目引用或拖上画布的时间 |
+
+#### ProjectAsset（项目素材引用）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID (PK) | 主键 |
+| project_id | UUID (FK) | 所属方案 |
+| asset_id | UUID (FK) | 关联素材 |
+| created_at | DATETIME | 引用创建时间 |
 
 #### Look（搭配方案）
 
@@ -218,6 +234,8 @@ src/backend/api/
 | GET | `/api/v1/projects` | 方案列表 |
 | GET | `/api/v1/projects/{id}` | 方案详情 |
 | PATCH | `/api/v1/projects/{id}` | 更新方案（重命名等） |
+| GET | `/api/v1/projects/{id}/canvas-state` | 获取画布草稿状态（本地节点/隐藏状态/覆盖信息） |
+| PATCH | `/api/v1/projects/{id}/canvas-state` | 更新画布草稿状态 |
 | DELETE | `/api/v1/projects/{id}` | 删除方案 |
 
 #### Asset（素材）
@@ -272,6 +290,7 @@ src/backend/api/
 | GET | `/api/v1/projects/{id}/shots` | 查询方案下全部 Shot（用于 Canvas 初始化恢复） |
 | POST | `/api/v1/looks/{id}/generate` | 提交拍摄/生成任务 |
 | GET | `/api/v1/shots/{id}` | 查询生成结果状态 |
+| PATCH | `/api/v1/shots/{id}` | 更新生成结果元数据（当前用于保存 `canvas_position`） |
 | PATCH | `/api/v1/shots/{id}/adopt` | 采纳/取消采纳 |
 
 **生成任务请求体**:
@@ -395,6 +414,20 @@ src/backend/services/
 为支持 Spark 画布刷新后恢复历史结果，补充只读查询接口 `GET /api/v1/projects/{id}/shots`。
 返回值沿用 `ShotResponse`，额外包含 `content_id` 用于前端识别哪些 Shot 已被发布聚合引用。
 
+为支持 Spark 画布自动保存结果节点位置，补充更新接口 `PATCH /api/v1/shots/{id}`。
+当前仅更新 `canvas_position`，前端在拖拽结束后立即调用，刷新工作台后按该位置恢复。
+
+为支持设计工具式自动保存，项目级新增 `canvas_state`：
+- 保存 `localNodes`，确保用户拖入/生成的本地图片与视频节点数量、位置、prompt、输入参数可恢复
+- 保存 `localBoards`，确保自定义分组恢复
+- 保存 `hiddenLookIds / hiddenLookItemIds / hiddenShotIds`
+- 保存 `lookPromptOverrides / lookFrameOverrides / shotPositionOverrides`
+
+前端策略：
+- 本地状态先立即更新
+- 使用 debounce 自动保存到后端
+- 同时写入浏览器本地 pending 草稿，刷新或短暂离线后仍可恢复并重试同步
+
 **TryOn 双入口说明**:
 - **Spark 端** (`action=tryon`): 创作者在画布中对 Look 点击「TryOn」快捷操作，参考照片来自素材库或本地上传，生成结果为 Shot 节点展示在画布中
 - **Land 端** (`POST /api/v1/land/contents/{id}/tryon`): 达人在内容详情页上传个人照片，生成 TryOnTask 记录，结果异步展示
@@ -516,10 +549,12 @@ interface CanvasStore {
   projectId: string | null
   looks: Look[]
   shots: Shot[]
+  projectCanvasState: CanvasDraftState | null
   // ...新增操作
   addLookBoard(look: Look): void
   addShotNode(shot: Shot): void
   adoptShot(shotId: string): void
+  saveProjectCanvasState(projectId: string, canvasState: CanvasDraftState): Promise<void>
 }
 
 // 素材 store（新增）

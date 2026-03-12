@@ -2,30 +2,52 @@ import { ActiveSelection } from 'fabric';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFabricCanvas } from '../../hooks/useFabricCanvas';
 import { useCanvasStore } from '../../store';
-import { LIMITS, type Look, type Shot } from '../../types';
-import { BottomPromptBar, type PromptSelection } from './BottomPromptBar';
+import {
+  LIMITS,
+  type CanvasDraftState,
+  type CanvasGenerationMeta,
+  type CanvasLocalBoard,
+  type CanvasLocalNode,
+  type Look,
+  type Shot,
+} from '../../types';
+import { BottomPromptBar, type GeneratedMediaPayload, type PromptSelection } from './BottomPromptBar';
 import { createCanvasNodeGroup, getCanvasNodeSize, type CanvasNodeType, updateCanvasNodeGroup } from './CanvasNode';
-import { FloatingToolbar, type FloatingSelectionKind } from './FloatingToolbar';
+import { FloatingToolbar, type FloatingSelectionKind, type QuickAction } from './FloatingToolbar';
 import { createLookFrameGroup } from './LookFrame';
 import './InfiniteCanvas.css';
 
 interface InfiniteCanvasProps {
+  projectId: string;
   looks: Look[];
   shots: Shot[];
   busy: boolean;
+  initialCanvasState: CanvasDraftState | null;
+  onCanvasStateChange: (canvasState: CanvasDraftState) => void;
   onGenerateLooks: (assetIds: string[]) => Promise<void>;
   onGenerateShot: (
     lookId: string,
     action: 'change_model' | 'change_background' | 'tryon' | 'custom',
     customPrompt?: string
   ) => Promise<void>;
+  onGenerateVideo?: (lookId: string) => void;
   onToggleAdopt: (shotId: string, adopted: boolean) => void;
+  onSaveLookBoardPosition: (
+    lookId: string,
+    boardPosition: NonNullable<Look['board_position']>
+  ) => void;
+  onSaveShotCanvasPosition: (
+    shotId: string,
+    canvasPosition: NonNullable<Shot['canvas_position']>
+  ) => void;
   onUploadFiles: (files: File[]) => Promise<void> | void;
   onReplaceLookItemAsset: (lookId: string, itemId: string, assetId: string) => void;
+  onQuickAction?: (action: QuickAction, imageUrl: string | null) => void;
 }
 
 interface ToolbarSelection {
   anchor: { x: number; y: number };
+  bottomAnchor: { x: number; y: number };
   kind: FloatingSelectionKind;
   ids: string[];
   data?: Record<string, unknown>;
@@ -38,29 +60,9 @@ interface CreateMenuState {
   screenY: number;
 }
 
-interface LocalNode {
-  id: string;
-  kind: 'prompt-node' | 'asset-image';
-  type: CanvasNodeType;
-  label: string;
-  prompt: string;
-  x: number;
-  y: number;
-  imageUrl?: string | null;
-  statusText?: string | null;
-}
-
-interface LocalBoard {
-  id: string;
-  name: string;
-  prompt: string;
-  frame: FramePosition;
-  itemIds: string[];
-}
-
 interface ClipboardNodeDescriptor {
   kind: 'node';
-  nodeKind: LocalNode['kind'];
+  nodeKind: CanvasLocalNode['kind'];
   type: CanvasNodeType;
   label: string;
   prompt: string;
@@ -68,6 +70,7 @@ interface ClipboardNodeDescriptor {
   y: number;
   imageUrl?: string | null;
   statusText?: string | null;
+  generation?: CanvasGenerationMeta | null;
 }
 
 interface ClipboardBoardDescriptor {
@@ -169,14 +172,21 @@ function readImageFile(file: File) {
 }
 
 export function InfiniteCanvas({
+  projectId,
   looks,
   shots,
   busy,
+  initialCanvasState,
+  onCanvasStateChange,
   onGenerateLooks,
   onGenerateShot,
+  onGenerateVideo,
   onToggleAdopt,
+  onSaveLookBoardPosition,
+  onSaveShotCanvasPosition,
   onUploadFiles,
   onReplaceLookItemAsset,
+  onQuickAction,
 }: InfiniteCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -195,9 +205,11 @@ export function InfiniteCanvas({
   const [hiddenLookIds, setHiddenLookIds] = useState<string[]>([]);
   const [hiddenLookItemIds, setHiddenLookItemIds] = useState<string[]>([]);
   const [hiddenShotIds, setHiddenShotIds] = useState<string[]>([]);
-  const [localNodes, setLocalNodes] = useState<LocalNode[]>([]);
-  const [localBoards, setLocalBoards] = useState<LocalBoard[]>([]);
+  const [localNodes, setLocalNodes] = useState<CanvasLocalNode[]>([]);
+  const [localBoards, setLocalBoards] = useState<CanvasLocalBoard[]>([]);
   const clipboardRef = useRef<ClipboardDescriptor[]>([]);
+  const dragHighlightRef = useRef<{ object: any; originalStroke: unknown; originalStrokeWidth: unknown } | null>(null);
+  const hydratedProjectRef = useRef<string | null>(null);
 
   const visibleLooks = useMemo(
     () => looks.filter((look) => !hiddenLookIds.includes(look.id)),
@@ -226,7 +238,7 @@ export function InfiniteCanvas({
   );
 
   const buildLocalNodeFromDescriptor = useCallback(
-    (descriptor: ClipboardNodeDescriptor, index = 0): LocalNode => ({
+    (descriptor: ClipboardNodeDescriptor, index = 0): CanvasLocalNode => ({
       id: `${descriptor.nodeKind}-${Date.now()}-${index}`,
       kind: descriptor.nodeKind,
       type: descriptor.type,
@@ -236,6 +248,7 @@ export function InfiniteCanvas({
       y: descriptor.y,
       imageUrl: descriptor.imageUrl ?? null,
       statusText: descriptor.statusText ?? null,
+      generation: descriptor.generation ?? null,
     }),
     []
   );
@@ -246,7 +259,7 @@ export function InfiniteCanvas({
       if (localBoard) {
         const children = localBoard.itemIds
           .map((itemId) => localNodes.find((node) => node.id === itemId))
-          .filter((node): node is LocalNode => Boolean(node))
+          .filter((node): node is CanvasLocalNode => Boolean(node))
           .map((node) => ({
             kind: 'node' as const,
             nodeKind: node.kind,
@@ -257,6 +270,7 @@ export function InfiniteCanvas({
             y: node.y,
             imageUrl: node.imageUrl ?? null,
             statusText: node.statusText ?? null,
+            generation: node.generation ?? null,
           }));
         return {
           kind: 'board',
@@ -286,6 +300,7 @@ export function InfiniteCanvas({
             y: position.y,
             imageUrl: item.asset_url ?? null,
             statusText: null,
+            generation: null,
           };
         });
       return {
@@ -324,6 +339,7 @@ export function InfiniteCanvas({
           : (primary.kind as ToolbarSelection['kind']);
       setToolbarSelection({
         anchor: info.anchor,
+        bottomAnchor: info.bottomAnchor,
         kind: normalizedKind,
         ids: filtered.map((item) => item.entityId ?? '').filter(Boolean),
         data: primary.data,
@@ -417,6 +433,45 @@ export function InfiniteCanvas({
   });
 
   useEffect(() => {
+    const snapshot = initialCanvasState;
+    if (!snapshot) return;
+    setLookPromptOverrides(snapshot.lookPromptOverrides ?? {});
+    setLookFrameOverrides(snapshot.lookFrameOverrides ?? {});
+    setShotPositionOverrides(snapshot.shotPositionOverrides ?? {});
+    setHiddenLookIds(snapshot.hiddenLookIds ?? []);
+    setHiddenLookItemIds(snapshot.hiddenLookItemIds ?? []);
+    setHiddenShotIds(snapshot.hiddenShotIds ?? []);
+    setLocalNodes(snapshot.localNodes ?? []);
+    setLocalBoards(snapshot.localBoards ?? []);
+    hydratedProjectRef.current = projectId;
+  }, [initialCanvasState, projectId]);
+
+  useEffect(() => {
+    if (hydratedProjectRef.current !== projectId) return;
+    onCanvasStateChange({
+      version: 1,
+      lookPromptOverrides,
+      lookFrameOverrides,
+      shotPositionOverrides,
+      hiddenLookIds,
+      hiddenLookItemIds,
+      hiddenShotIds,
+      localNodes,
+      localBoards,
+    });
+  }, [
+    hiddenLookIds,
+    hiddenLookItemIds,
+    hiddenShotIds,
+    localBoards,
+    localNodes,
+    lookFrameOverrides,
+    lookPromptOverrides,
+    onCanvasStateChange,
+    shotPositionOverrides,
+  ]);
+
+  useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const base = 24;
@@ -482,8 +537,8 @@ export function InfiniteCanvas({
   const pasteClipboard = useCallback(() => {
     if (clipboardRef.current.length === 0) return;
     const offset = 36;
-    const nextNodes: LocalNode[] = [];
-    const nextBoards: LocalBoard[] = [];
+    const nextNodes: CanvasLocalNode[] = [];
+    const nextBoards: CanvasLocalBoard[] = [];
 
     clipboardRef.current.forEach((descriptor, descriptorIndex) => {
       if (descriptor.kind === 'node') {
@@ -676,6 +731,15 @@ export function InfiniteCanvas({
     let disposed = false;
 
     const draw = async () => {
+      // Capture currently selected entity IDs so we can restore selection after redraw
+      const previousActiveIds: string[] = [];
+      const activeObjects = canvas.getActiveObjects();
+      activeObjects.forEach((obj) => {
+        const data = (obj.get('data') as Record<string, unknown> | undefined) ?? {};
+        const entityId = data.entityId as string | undefined;
+        if (entityId) previousActiveIds.push(entityId);
+      });
+
       const businessObjects = canvas
         .getObjects()
         .filter((object) => {
@@ -731,15 +795,17 @@ export function InfiniteCanvas({
           canvas.requestRenderAll();
         });
         frame.on('modified', () => {
+          const nextFrame = {
+            x: frame.left ?? look.frame.x,
+            y: frame.top ?? look.frame.y,
+            width: look.frame.width,
+            height: look.frame.height,
+          };
           setLookFrameOverrides((prev) => ({
             ...prev,
-            [look.id]: {
-              x: frame.left ?? look.frame.x,
-              y: frame.top ?? look.frame.y,
-              width: look.frame.width,
-              height: look.frame.height,
-            },
+            [look.id]: nextFrame,
           }));
+          onSaveLookBoardPosition(look.id, nextFrame);
         });
       }
 
@@ -764,10 +830,15 @@ export function InfiniteCanvas({
           position.y
         );
         node.on('modified', () => {
+          const nextPosition = {
+            x: node.left ?? position.x,
+            y: node.top ?? position.y,
+          };
           setShotPositionOverrides((prev) => ({
             ...prev,
-            [shot.id]: { x: node.left ?? position.x, y: node.top ?? position.y },
+            [shot.id]: nextPosition,
           }));
+          onSaveShotCanvasPosition(shot.id, nextPosition);
         });
         if (!disposed) canvas.add(node);
       }
@@ -883,6 +954,19 @@ export function InfiniteCanvas({
       }
 
       if (!disposed) {
+        // Restore selection if objects were previously selected
+        if (previousActiveIds.length > 0) {
+          const objectsToSelect = canvas.getObjects().filter((obj) => {
+            const data = (obj.get('data') as Record<string, unknown> | undefined) ?? {};
+            return previousActiveIds.includes(data.entityId as string);
+          });
+          if (objectsToSelect.length === 1) {
+            canvas.setActiveObject(objectsToSelect[0]);
+          } else if (objectsToSelect.length > 1) {
+            const selection = new ActiveSelection(objectsToSelect, { canvas });
+            canvas.setActiveObject(selection);
+          }
+        }
         canvas.requestRenderAll();
       }
     };
@@ -891,19 +975,35 @@ export function InfiniteCanvas({
     return () => {
       disposed = true;
     };
-  }, [canvas, hiddenLookItemIds, localBoards, localNodes, looksWithOverrides, shotsWithOverrides]);
+  }, [
+    canvas,
+    hiddenLookItemIds,
+    localBoards,
+    localNodes,
+    looksWithOverrides,
+    onSaveLookBoardPosition,
+    onSaveShotCanvasPosition,
+    shotsWithOverrides,
+  ]);
 
   const isActuallyPanning = isSpacePressed || isPanning;
 
   const handleImageGenerated = useCallback(
-    (base64: string) => {
-      const imageUrl = `data:image/png;base64,${base64}`;
+    ({ content, generation }: GeneratedMediaPayload) => {
+      const imageUrl = `data:image/png;base64,${content}`;
       const selectedId = toolbarSelection?.ids[0];
       const selectedType = toolbarSelection?.data?.nodeType as CanvasNodeType | undefined;
       if (toolbarSelection?.kind === 'prompt-node' && selectedId && selectedType === 'image') {
         setLocalNodes((prev) =>
           prev.map((node) =>
-            node.id === selectedId ? { ...node, imageUrl, prompt: promptSelection?.prompt ?? node.prompt } : node
+            node.id === selectedId
+              ? {
+                  ...node,
+                  imageUrl,
+                  prompt: promptSelection?.prompt ?? node.prompt,
+                  generation,
+                }
+              : node
           )
         );
         return;
@@ -919,6 +1019,7 @@ export function InfiniteCanvas({
           x: (window.innerWidth / 2 + viewport.x) / viewport.zoom,
           y: (window.innerHeight / 2 + viewport.y) / viewport.zoom,
           imageUrl,
+          generation,
         },
       ]);
     },
@@ -926,13 +1027,13 @@ export function InfiniteCanvas({
   );
 
   const handleVideoGenerated = useCallback(
-    () => {
+    ({ generation }: GeneratedMediaPayload) => {
       const selectedId = toolbarSelection?.ids[0];
       const selectedType = toolbarSelection?.data?.nodeType as CanvasNodeType | undefined;
       if (toolbarSelection?.kind === 'prompt-node' && selectedId && selectedType === 'video') {
         setLocalNodes((prev) =>
           prev.map((node) =>
-            node.id === selectedId ? { ...node, statusText: '视频已生成' } : node
+            node.id === selectedId ? { ...node, statusText: '视频已生成', generation } : node
           )
         );
         return;
@@ -948,6 +1049,7 @@ export function InfiniteCanvas({
           x: (window.innerWidth / 2 + viewport.x) / viewport.zoom,
           y: (window.innerHeight / 2 + viewport.y) / viewport.zoom,
           statusText: '视频已生成',
+          generation,
         },
       ]);
     },
@@ -959,12 +1061,18 @@ export function InfiniteCanvas({
       if (createMenu) {
         setCreateMenu(null);
       }
-      if (isActuallyPanning || event.button === 1) {
+      const target = canvas?.findTarget?.(event.nativeEvent);
+      const shouldPan =
+        event.button === 1 ||
+        isActuallyPanning ||
+        (!target && event.button === 0);
+      if (shouldPan) {
+        event.preventDefault();
         setIsDragging(true);
         setLastMousePos({ x: event.clientX, y: event.clientY });
       }
     },
-    [createMenu, isActuallyPanning]
+    [canvas, createMenu, isActuallyPanning]
   );
 
   const handleMouseMove = useCallback(
@@ -973,7 +1081,8 @@ export function InfiniteCanvas({
         pan(event.clientX - lastMousePos.x, event.clientY - lastMousePos.y);
         setLastMousePos({ x: event.clientX, y: event.clientY });
       }
-      event.currentTarget.style.cursor = isActuallyPanning ? (isDragging ? 'grabbing' : 'grab') : 'default';
+      event.currentTarget.style.cursor =
+        isDragging || isActuallyPanning ? (isDragging ? 'grabbing' : 'grab') : 'default';
     },
     [isDragging, isActuallyPanning, lastMousePos, pan]
   );
@@ -981,14 +1090,19 @@ export function InfiniteCanvas({
   const handleWheel = useCallback(
     (event: React.WheelEvent<HTMLDivElement>) => {
       event.preventDefault();
-      const delta = event.deltaY > 0 ? -0.1 : 0.1;
-      const nextZoom = Math.max(LIMITS.minZoom, Math.min(LIMITS.maxZoom, viewport.zoom + delta));
-      setZoom(nextZoom, { x: event.clientX, y: event.clientY });
+      if (event.ctrlKey) {
+        const delta = event.deltaY > 0 ? -0.1 : 0.1;
+        const nextZoom = Math.max(LIMITS.minZoom, Math.min(LIMITS.maxZoom, viewport.zoom + delta));
+        setZoom(nextZoom, { x: event.clientX, y: event.clientY });
+        return;
+      }
+
+      pan(-event.deltaX, -event.deltaY);
     },
-    [setZoom, viewport.zoom]
+    [pan, setZoom, viewport.zoom]
   );
 
-  const addLocalNode = useCallback((node: LocalNode) => {
+  const addLocalNode = useCallback((node: CanvasLocalNode) => {
     setLocalNodes((prev) => [...prev, node]);
   }, []);
 
@@ -1002,6 +1116,7 @@ export function InfiniteCanvas({
         prompt: defaultPrompt(nodeType),
         x,
         y,
+        generation: null,
       });
     },
     [addLocalNode]
@@ -1037,6 +1152,7 @@ export function InfiniteCanvas({
               x: dropX + index * 28,
               y: dropY + index * 28,
               imageUrl: preview.imageUrl,
+              generation: null,
             });
           });
         }
@@ -1082,6 +1198,7 @@ export function InfiniteCanvas({
           x: dropX,
           y: dropY,
           imageUrl: asset.url,
+          generation: null,
         });
       } catch {
         // Ignore malformed payloads.
@@ -1202,8 +1319,45 @@ export function InfiniteCanvas({
       onMouseUp={() => setIsDragging(false)}
       onMouseLeave={() => setIsDragging(false)}
       onWheel={handleWheel}
-      onDragOver={(event) => event.preventDefault()}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!canvas) return;
+        const containerBounds = event.currentTarget.getBoundingClientRect();
+        const screenX = event.clientX - containerBounds.left;
+        const screenY = event.clientY - containerBounds.top;
+        const target = canvas.getObjects().find((object) => {
+          const data = object.get('data') as Record<string, unknown> | undefined;
+          if (data?.kind !== 'look-item-node') return false;
+          const bounds = object.getBoundingRect();
+          return screenX >= bounds.left && screenX <= bounds.left + bounds.width && screenY >= bounds.top && screenY <= bounds.top + bounds.height;
+        });
+        const prev = dragHighlightRef.current;
+        if (prev && prev.object !== target) {
+          prev.object.set({ stroke: prev.originalStroke, strokeWidth: prev.originalStrokeWidth });
+          dragHighlightRef.current = null;
+          canvas.requestRenderAll();
+        }
+        if (target && !prev) {
+          dragHighlightRef.current = { object: target, originalStroke: target.get('stroke'), originalStrokeWidth: target.get('strokeWidth') };
+          target.set({ stroke: 'rgba(126, 156, 255, 0.9)', strokeWidth: 3 });
+          canvas.requestRenderAll();
+        }
+      }}
+      onDragLeave={() => {
+        if (dragHighlightRef.current && canvas) {
+          const prev = dragHighlightRef.current;
+          prev.object.set({ stroke: prev.originalStroke, strokeWidth: prev.originalStrokeWidth });
+          dragHighlightRef.current = null;
+          canvas.requestRenderAll();
+        }
+      }}
       onDrop={(event) => {
+        if (dragHighlightRef.current && canvas) {
+          const prev = dragHighlightRef.current;
+          prev.object.set({ stroke: prev.originalStroke, strokeWidth: prev.originalStrokeWidth });
+          dragHighlightRef.current = null;
+          canvas.requestRenderAll();
+        }
         void handleDrop(event);
       }}
     >
@@ -1227,9 +1381,17 @@ export function InfiniteCanvas({
             const prompt = lookPromptOverrides[lookId] ?? looks.find((look) => look.id === lookId)?.description ?? '';
             void onGenerateShot(lookId, action, action === 'custom' ? prompt : undefined);
           }}
+          onGenerateVideo={() => {
+            const lookId = toolbarSelection.ids[0];
+            if (lookId) onGenerateVideo?.(lookId);
+          }}
           onToggleAdopt={() => {
             if (!selectedShot) return;
             onToggleAdopt(selectedShot.id, !selectedShot.adopted);
+          }}
+          onQuickAction={(action) => {
+            const imageUrl = toolbarSelection?.data?.imageUrl as string | null ?? null;
+            onQuickAction?.(action, imageUrl);
           }}
         />
       ) : null}
@@ -1274,6 +1436,8 @@ export function InfiniteCanvas({
         selection={promptSelection}
         onSelectionPromptChange={handleSelectionPromptChange}
         onClearSelection={handleClearSelection}
+        anchorX={toolbarSelection?.bottomAnchor.x}
+        anchorY={toolbarSelection?.bottomAnchor.y}
       />
 
       <div className="canvas-sidebar">

@@ -1,7 +1,12 @@
 import logging
 import os
+import shutil
+from pathlib import Path
 
 import pytest
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///data/test_muse.db")
+os.environ.setdefault("MEDIA_ROOT", "data/test_uploads")
 
 from src.backend.logger import logger
 
@@ -60,7 +65,17 @@ def ensure_output_dir():
     output_dirs = [
         "tests/providers/image/output",
         "tests/providers/video/output",
+        os.environ["MEDIA_ROOT"],
     ]
     for dir_path in output_dirs:
         os.makedirs(dir_path, exist_ok=True)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def isolate_test_media():
+    media_root = Path(os.environ["MEDIA_ROOT"])
+    if media_root.exists():
+        shutil.rmtree(media_root)
+    media_root.mkdir(parents=True, exist_ok=True)
     yield

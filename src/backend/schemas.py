@@ -53,6 +53,15 @@ class ProjectUpdate(BaseModel):
     cover_url: str | None = None
 
 
+class ProjectCanvasStateResponse(BaseModel):
+    project_id: str
+    canvas_state: dict[str, Any] | None = None
+
+
+class ProjectCanvasStateUpdate(BaseModel):
+    canvas_state: dict[str, Any] | None = None
+
+
 class ProjectBrief(BaseModel):
     id: str
     name: str
@@ -180,6 +189,10 @@ class ShotGenerateRequest(BaseModel):
 
 class ShotAdoptRequest(BaseModel):
     adopted: bool = True
+
+
+class ShotUpdate(BaseModel):
+    canvas_position: dict[str, Any] | None = None  # {x, y}
 
 
 class ShotResponse(BaseModel):

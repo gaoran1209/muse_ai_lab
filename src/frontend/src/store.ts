@@ -21,12 +21,15 @@ import {
   generateLooks,
   generateShot,
   publishContent,
+  updateProjectCanvasState,
+  updateShot,
   updateAsset,
   updateLook,
   updateProject,
 } from './lib/sparkApi';
 import type {
   Asset,
+  CanvasDraftState,
   CanvasItem,
   Content,
   ContentBrief,
@@ -134,8 +137,9 @@ interface SparkStore {
   assets: Asset[];
   looks: Look[];
   shots: Shot[];
+  projectCanvasState: CanvasDraftState | null;
   publishedLookIds: string[];
-  activeCategory: 'all' | Asset['category'];
+  activeCategory: Asset['category'];
   selectedPublishShotIds: string[];
   selectedLookId: string | null;
   loadingProjects: boolean;
@@ -148,8 +152,12 @@ interface SparkStore {
   deleteProjectById: (projectId: string) => Promise<void>;
   renameProject: (projectId: string, name: string) => Promise<ProjectDetail>;
   loadWorkspace: (projectId: string) => Promise<void>;
-  setActiveCategory: (category: 'all' | Asset['category']) => void;
-  uploadAssetFiles: (projectId: string, files: File[], category: Asset['category']) => Promise<void>;
+  setActiveCategory: (category: Asset['category']) => void;
+  uploadAssetFiles: (
+    projectId: string,
+    files: File[],
+    category: Asset['category']
+  ) => Promise<Asset[]>;
   updateAssetMeta: (assetId: string, payload: { category?: Asset['category']; tags?: Asset['tags'] }) => Promise<Asset>;
   deleteAssetById: (assetId: string) => Promise<void>;
   upsertLook: (look: Look) => void;
@@ -167,6 +175,7 @@ interface SparkStore {
       vendor?: string;
       presetId?: string;
       customPrompt?: string;
+      referenceImageUrl?: string;
       parameters?: Record<string, string | number | boolean | null>;
     }
   ) => Promise<Shot>;
@@ -174,6 +183,18 @@ interface SparkStore {
   togglePublishShotSelection: (shotId: string) => void;
   clearPublishSelection: () => void;
   setShotAdopted: (projectId: string, shotId: string, adopted: boolean) => Promise<void>;
+  saveLookDraft: (
+    lookId: string,
+    payload: {
+      description?: string | null;
+      boardPosition?: NonNullable<Look['board_position']>;
+    }
+  ) => Promise<void>;
+  saveShotCanvasPosition: (
+    shotId: string,
+    canvasPosition: NonNullable<Shot['canvas_position']>
+  ) => Promise<void>;
+  saveProjectCanvasState: (projectId: string, canvasState: CanvasDraftState) => Promise<void>;
   replaceLookItemAsset: (lookId: string, itemId: string, assetId: string) => Promise<Look>;
   publishSelectedShots: (
     projectId: string,
@@ -204,8 +225,9 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
   assets: [],
   looks: [],
   shots: [],
+  projectCanvasState: null,
   publishedLookIds: [],
-  activeCategory: 'all',
+  activeCategory: 'product',
   selectedPublishShotIds: [],
   selectedLookId: null,
   loadingProjects: false,
@@ -296,7 +318,13 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
   },
 
   loadWorkspace: async (projectId: string) => {
-    set({ loadingWorkspace: true, error: null, selectedPublishShotIds: [], selectedLookId: null });
+    set({
+      loadingWorkspace: true,
+      error: null,
+      selectedPublishShotIds: [],
+      selectedLookId: null,
+      projectCanvasState: null,
+    });
     try {
       const bundle = await fetchWorkspace(projectId);
       set({
@@ -305,12 +333,14 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
         assets: bundle.assets,
         looks: bundle.looks,
         shots: bundle.shots,
+        projectCanvasState: bundle.canvasState,
         publishedLookIds: bundle.publishedLookIds,
       });
     } catch (error) {
       set({
         loadingWorkspace: false,
         error: error instanceof Error ? error.message : '无法加载工作台',
+        projectCanvasState: null,
       });
     }
   },
@@ -330,8 +360,10 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
           ? { ...state.activeProject, asset_count: state.activeProject.asset_count + createdAssets.length }
           : state.activeProject,
       }));
+      return createdAssets;
     } catch (error) {
       set({ busy: false, error: error instanceof Error ? error.message : '素材上传失败' });
+      throw error;
     }
   },
 
@@ -428,6 +460,42 @@ export const useSparkStore = create<SparkStore>((set, get) => ({
       }));
     } catch (error) {
       set({ error: error instanceof Error ? error.message : '采纳状态更新失败' });
+    }
+  },
+
+  saveLookDraft: async (lookId, payload) => {
+    const look = get().looks.find((item) => item.id === lookId);
+    if (!look) return;
+    try {
+      const updatedLook = await updateLook(lookId, {
+        description: payload.description,
+        boardPosition: payload.boardPosition,
+      });
+      set((state) => ({
+        looks: state.looks.map((item) => (item.id === lookId ? updatedLook : item)),
+      }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : '画板位置保存失败' });
+    }
+  },
+
+  saveShotCanvasPosition: async (shotId, canvasPosition) => {
+    try {
+      const updatedShot = await updateShot(shotId, { canvasPosition });
+      set((state) => ({
+        shots: state.shots.map((item) => (item.id === shotId ? updatedShot : item)),
+      }));
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : '结果位置保存失败' });
+    }
+  },
+
+  saveProjectCanvasState: async (projectId, canvasState) => {
+    try {
+      await updateProjectCanvasState(projectId, canvasState);
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : '画布状态保存失败' });
+      throw error;
     }
   },
 

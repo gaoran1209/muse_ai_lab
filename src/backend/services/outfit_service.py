@@ -13,9 +13,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from src.backend.models import Asset, Look, LookItem, Project
 from src.backend.schemas import AssetTags, LookGenerateRequest, LookGenerateResponse, LookItemUpdate, LookResponse, LookUpdate
-from src.backend.services._helpers import DEFAULT_LLM_VENDOR, dumps_json, loads_json, look_to_response
+from src.backend.logger import get_logger
+from src.backend.services._helpers import DEFAULT_IMAGE_VENDOR, DEFAULT_LLM_VENDOR, dumps_json, image_data_url, loads_json, look_to_response
 from src.backend.services.prompt_templates import render_outfit_prompt, summarize_asset_tags
-from src.backend.services.provider_service import LLMService
+from src.backend.services.provider_service import ImageService, LLMService
+
+logger = get_logger(__name__)
 
 
 def _extract_json_object(content: str) -> dict[str, Any] | None:
@@ -148,6 +151,69 @@ class OutfitService:
         return chosen_items
 
     @staticmethod
+    def _fill_placeholder_items(db: Session, project_id: str, looks: list[Look], style_tags: list[str]) -> None:
+        """Generate images for LookItems that have placeholder_desc but no asset.
+
+        PRD 5.1.4.4: 如商品图是上衣，则调用图像生成模型生成对应裤子和鞋子的效果图。
+        """
+        CATEGORY_LABELS = {
+            "top": "上衣",
+            "bottom": "裤子/下装",
+            "dress": "连衣裙",
+            "shoes": "鞋子",
+            "bag": "包袋",
+            "accessory": "配饰",
+        }
+
+        placeholder_items: list[LookItem] = []
+        for look in looks:
+            for item in look.items:
+                if item.placeholder_desc and not item.asset_id:
+                    placeholder_items.append(item)
+
+        if not placeholder_items:
+            return
+
+        style_hint = "、".join(style_tags[:3]) if style_tags else "时尚"
+        for item in placeholder_items:
+            label = CATEGORY_LABELS.get(item.category, item.category or "单品")
+            prompt = (
+                f"专业电商产品图，白色背景，干净简约，一件{label}，"
+                f"风格：{style_hint}，适合搭配穿搭内容。高品质商业摄影，无模特。"
+            )
+            try:
+                result = ImageService.generate(DEFAULT_IMAGE_VENDOR, prompt)
+                if not result.get("success") or not result.get("content"):
+                    logger.warning("Failed to generate placeholder image for item %s", item.id)
+                    continue
+
+                url = image_data_url(result["content"])
+                if not url:
+                    continue
+
+                asset = Asset(
+                    project_id=project_id,
+                    url=url,
+                    thumbnail_url=url,
+                    category="product",
+                    tags=dumps_json({
+                        "category": "product",
+                        "subcategory": item.category,
+                        "style": style_hint,
+                    }),
+                    original_filename=f"AI 生成 - {label}",
+                )
+                db.add(asset)
+                db.flush()
+
+                item.asset_id = asset.id
+                item.placeholder_desc = None
+            except Exception:
+                logger.exception("Error generating placeholder image for item %s", item.id)
+
+        db.commit()
+
+    @staticmethod
     def generate_looks(db: Session, project_id: str, payload: LookGenerateRequest) -> LookGenerateResponse:
         project = OutfitService._get_project(db, project_id)
         selected_assets = [asset for asset in project.assets if asset.id in payload.asset_ids]
@@ -192,6 +258,24 @@ class OutfitService:
         db.commit()
         for look in looks:
             db.refresh(look)
+
+        # PRD 5.1.4.4: 为缺失品类生成单品效果图
+        hydrated = (
+            db.query(Look)
+            .options(selectinload(Look.items).selectinload(LookItem.asset))
+            .filter(Look.id.in_([look.id for look in looks]))
+            .order_by(Look.created_at.desc())
+            .all()
+        )
+        hydrated.reverse()
+
+        all_style_tags = style_tags if looks else []
+        try:
+            OutfitService._fill_placeholder_items(db, project_id, hydrated, all_style_tags)
+        except Exception:
+            logger.exception("Placeholder image generation failed, looks still usable")
+
+        # Re-hydrate after potential asset creation
         hydrated = (
             db.query(Look)
             .options(selectinload(Look.items).selectinload(LookItem.asset))

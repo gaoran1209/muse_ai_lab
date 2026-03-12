@@ -131,6 +131,19 @@ export default function LandDetailPage() {
     }
   }
 
+  async function handleTryOnSubmitUrl(url: string): Promise<void> {
+    setTryOnDialogError(null);
+
+    try {
+      await startTryOn(activeContentId, url);
+      setTryOnOpen(false);
+    } catch (submitError) {
+      setTryOnDialogError(
+        submitError instanceof Error ? submitError.message : 'TryOn 提交失败'
+      );
+    }
+  }
+
   async function handleOpenPromote(): Promise<void> {
     setPromoteOpen(true);
     if (!promote && !loadingPromote) {
@@ -328,6 +341,7 @@ export default function LandDetailPage() {
           setTryOnOpen(false);
         }}
         onSubmit={handleTryOnSubmit}
+        onSubmitUrl={handleTryOnSubmitUrl}
       />
 
       <PromoteDialog

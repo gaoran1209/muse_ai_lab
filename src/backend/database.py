@@ -7,7 +7,7 @@ The session factory provides dependency-injected sessions for FastAPI routes.
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from src.backend.config import config
@@ -49,3 +49,23 @@ def get_db() -> Generator[Session, None, None]:
 def create_tables() -> None:
     """Create all tables defined in models. Safe to call multiple times."""
     Base.metadata.create_all(bind=engine)
+    _ensure_schema_columns()
+
+
+def _ensure_schema_columns() -> None:
+    """Apply additive schema fixes for existing SQLite demo databases."""
+    inspector = inspect(engine)
+    if "projects" not in inspector.get_table_names():
+        return
+
+    project_columns = {column["name"] for column in inspector.get_columns("projects")}
+    statements: list[str] = []
+    if "canvas_state" not in project_columns:
+        statements.append("ALTER TABLE projects ADD COLUMN canvas_state TEXT")
+
+    if not statements:
+        return
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))

@@ -83,6 +83,7 @@ class TestProject:
         assert project.id is not None
         assert project.name == "Test Project"
         assert project.cover_url is None
+        assert project.canvas_state is None
         assert project.created_at is not None
 
     def test_project_default_name(self, db: Session):

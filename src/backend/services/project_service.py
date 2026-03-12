@@ -7,8 +7,8 @@ from __future__ import annotations
 from sqlalchemy.orm import Session, selectinload
 
 from src.backend.models import Asset, Look, LookItem, Project, Shot
-from src.backend.schemas import ProjectCreate, ProjectResponse, ProjectUpdate
-from src.backend.services._helpers import project_to_response, safe_text
+from src.backend.schemas import ProjectCanvasStateResponse, ProjectCanvasStateUpdate, ProjectCreate, ProjectResponse, ProjectUpdate
+from src.backend.services._helpers import dumps_json, loads_json, project_to_response, safe_text
 
 
 class ProjectService:
@@ -58,6 +58,29 @@ class ProjectService:
         return project_to_response(project)
 
     @staticmethod
+    def get_canvas_state(db: Session, project_id: str) -> ProjectCanvasStateResponse:
+        project = ProjectService.get_project(db, project_id)
+        return ProjectCanvasStateResponse(
+            project_id=project.id,
+            canvas_state=loads_json(project.canvas_state, None),
+        )
+
+    @staticmethod
+    def update_canvas_state(
+        db: Session,
+        project_id: str,
+        payload: ProjectCanvasStateUpdate,
+    ) -> ProjectCanvasStateResponse:
+        project = ProjectService.get_project(db, project_id)
+        project.canvas_state = dumps_json(payload.canvas_state)
+        db.commit()
+        db.refresh(project)
+        return ProjectCanvasStateResponse(
+            project_id=project.id,
+            canvas_state=loads_json(project.canvas_state, None),
+        )
+
+    @staticmethod
     def delete_project(db: Session, project_id: str) -> None:
         project = ProjectService.get_project(db, project_id)
         db.delete(project)
@@ -81,6 +104,7 @@ class ProjectService:
         duplicate = Project(
             name=safe_text(f"{source.name} Copy", "Untitled Project Copy"),
             cover_url=source.cover_url,
+            canvas_state=source.canvas_state,
         )
         db.add(duplicate)
         db.flush()

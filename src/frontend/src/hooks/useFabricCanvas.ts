@@ -31,6 +31,7 @@ export interface CanvasSelectionInfo {
     data?: Record<string, unknown>;
   }>;
   anchor: { x: number; y: number };
+  bottomAnchor: { x: number; y: number };
 }
 
 export function useFabricCanvas(
@@ -79,13 +80,30 @@ export function useFabricCanvas(
       getObjectScaling?: () => { x: number; y: number };
     }) => {
       const bounds = activeObject.getBoundingRect();
+      const logicalX = bounds.left + bounds.width / 2;
+      const logicalY = bounds.top;
+      const logicalBottomY = bounds.top + bounds.height;
+
+      const vpt = canvas.viewportTransform;
+      const screenX = vpt ? logicalX * vpt[0] + logicalY * vpt[2] + vpt[4] : logicalX;
+      let screenY = vpt ? logicalX * vpt[1] + logicalY * vpt[3] + vpt[5] : logicalY;
+      const screenBottomX = vpt ? logicalX * vpt[0] + logicalBottomY * vpt[2] + vpt[4] : logicalX;
+      const screenBottomY = vpt ? logicalX * vpt[1] + logicalBottomY * vpt[3] + vpt[5] : logicalBottomY;
+
       const data = (activeObject.get?.('data') as Record<string, unknown> | undefined) ?? {};
       const anchorOffsetTop = typeof data.toolbarAnchorOffsetTop === 'number' ? data.toolbarAnchorOffsetTop : 0;
       const objectScaleY = activeObject.getObjectScaling?.().y ?? 1;
       const anchorYOffset = anchorOffsetTop * objectScaleY * canvas.getZoom();
+
       return {
-        x: bounds.left + bounds.width / 2,
-        y: bounds.top + anchorYOffset,
+        anchor: {
+          x: screenX,
+          y: screenY + anchorYOffset,
+        },
+        bottomAnchor: {
+          x: screenBottomX,
+          y: screenBottomY,
+        },
       };
     };
 
@@ -105,7 +123,7 @@ export function useFabricCanvas(
       activeObject: { getBoundingRect: () => { left: number; top: number; width: number; height: number } } | null
     ) => {
       if (!activeObject || selectedObjects.length === 0) return;
-      const anchor = getAnchorFromObject(activeObject);
+      const { anchor, bottomAnchor } = getAnchorFromObject(activeObject);
       onSelectionChangeRef.current?.({
         items: selectedObjects.map((obj) => ({
           kind: obj.data?.kind ?? 'unknown',
@@ -113,6 +131,7 @@ export function useFabricCanvas(
           data: obj.data,
         })),
         anchor,
+        bottomAnchor,
       });
       selectionAnchorRef.current = `${anchor.x}:${anchor.y}:${selectedObjects.length}`;
     };
@@ -165,6 +184,7 @@ export function useFabricCanvas(
       onSelectionChangeRef.current?.({
         items: [],
         anchor: { x: 0, y: 0 },
+        bottomAnchor: { x: 0, y: 0 },
       });
       onSelectionClearRef.current?.();
     });
@@ -188,7 +208,7 @@ export function useFabricCanvas(
         | null;
       const activeObjects = canvas.getActiveObjects() as Array<{ data?: { kind?: string; entityId?: string } }>;
       if (!activeObject || activeObjects.length === 0) return;
-      const anchor = getAnchorFromObject(activeObject);
+      const { anchor } = getAnchorFromObject(activeObject);
       const nextSignature = `${anchor.x}:${anchor.y}:${activeObjects.length}`;
       if (nextSignature === selectionAnchorRef.current) return;
       notifySelectionChanged(activeObjects, activeObject);
@@ -293,7 +313,9 @@ export function useFabricCanvas(
           originY: 'center',
           selectable: true,
           hasControls: false,
-          hasBorders: false,
+          hasBorders: true,
+          borderColor: 'rgba(126, 156, 255, 0.72)',
+          borderScaleFactor: 2.4,
           hasRotatingPoint: false,
           lockRotation: true,
           stroke: 'rgba(255, 255, 255, 0.18)',

@@ -1,25 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import './BottomPromptBar.css';
+import {
+  buildDefaults,
+  type ExposedParam,
+  getModelChoices,
+  getModelLabel,
+  getProviderLabel,
+  getVisibleProviders,
+  isImageParam,
+  type ProviderInfo,
+  type GenerationMode as Mode,
+} from './providerOptions';
+import type { CanvasGenerationMeta } from '../../types';
 
-type Mode = 'image' | 'video';
-
-interface ExposedParam {
-  name: string;
-  type: string;
-  default: unknown;
-  description: string;
-  choices: string[] | null;
-  required: boolean;
-}
-
-interface ProviderInfo {
-  vendor: string;
-  model: string;
-  available: boolean;
-  info: {
-    provider_type: string;
-    exposed_params: ExposedParam[];
-  };
+export interface GeneratedMediaPayload {
+  content: string;
+  generation: CanvasGenerationMeta;
 }
 
 export interface PromptSelection {
@@ -33,39 +29,20 @@ export interface PromptSelection {
 
 interface Props {
   visible?: boolean;
-  onImageGenerated: (base64: string) => void;
-  onVideoGenerated: (base64: string) => void;
+  onImageGenerated: (payload: GeneratedMediaPayload) => void;
+  onVideoGenerated: (payload: GeneratedMediaPayload) => void;
   selectedImageDataUrl?: string | null;
   selectedImageUrl?: string | null;
   selection?: PromptSelection | null;
   onSelectionPromptChange?: (prompt: string) => void;
   onClearSelection?: () => void;
-}
-
-const IMAGE_MODEL_LABELS: Record<string, string> = {
-  'gemini-3.1-flash-image-preview': 'Nano Banana 2',
-  'gemini-3-pro-image-preview': 'Nano Banana Pro',
-  'imagen-4.0-fast-generate-001': 'Imagen 4.0 Fast',
-  'imagen-4.0-generate-001': 'Imagen 4.0',
-  'imagen-4.0-ultra-generate-001': 'Imagen 4.0 Ultra',
-};
-
-function shortLabel(vendor: string): string {
-  const map: Record<string, string> = {
-    '302ai_nano_banana': 'Nano Banana',
-    '302ai_seedream': 'Seedream',
-    '302ai_kling': 'Kling',
-    zhipu: 'Zhipu',
-    gemini: 'Gemini',
-    '302ai': '302.AI',
-    '302ai_gemini': '302.AI Gemini',
-  };
-  return map[vendor] ?? vendor;
+  anchorX?: number;
+  anchorY?: number;
 }
 
 function choiceLabel(param: ExposedParam, value: unknown): string {
   if (param.name === 'model_name') {
-    return IMAGE_MODEL_LABELS[String(value)] ?? String(value);
+    return getModelLabel(String(value));
   }
   return String(value);
 }
@@ -79,11 +56,6 @@ function chipDisplay(p: ExposedParam, val: unknown): string {
     return p.description || p.name;
   }
   return choiceLabel(p, val);
-}
-
-function isImageParam(param: ExposedParam): boolean {
-  const name = param.name.toLowerCase();
-  return name === 'image' || name === 'images';
 }
 
 function dataUrlToFile(dataUrl: string, filename: string): File {
@@ -113,6 +85,8 @@ export function BottomPromptBar({
   selection,
   onSelectionPromptChange,
   onClearSelection,
+  anchorX,
+  anchorY,
 }: Props) {
   const [mode, setMode] = useState<Mode>('image');
   const [imageProviders, setImageProviders] = useState<ProviderInfo[]>([]);
@@ -131,11 +105,13 @@ export function BottomPromptBar({
       fetch('/api/v1/video/providers').then((r) => r.json()),
     ])
       .then(([imgList, vidList]: [ProviderInfo[], ProviderInfo[]]) => {
-        setImageProviders(imgList);
-        setVideoProviders(vidList);
-        if (imgList.length > 0) {
-          setSelectedVendor(imgList[0].vendor);
-          setParams(buildDefaults(imgList[0]));
+        const visibleImageProviders = getVisibleProviders('image', imgList);
+        const visibleVideoProviders = getVisibleProviders('video', vidList);
+        setImageProviders(visibleImageProviders);
+        setVideoProviders(visibleVideoProviders);
+        if (visibleImageProviders.length > 0) {
+          setSelectedVendor(visibleImageProviders[0].vendor);
+          setParams(buildDefaults(visibleImageProviders[0]));
         }
       })
       .catch(() => setError('无法连接后端'));
@@ -180,15 +156,6 @@ export function BottomPromptBar({
     setError(null);
     setOpenChip(null);
   }, [visible]);
-
-  function buildDefaults(provider: ProviderInfo): Record<string, unknown> {
-    return Object.fromEntries(
-      provider.info.exposed_params
-        .filter((param) => !isImageParam(param))
-        .map((param) => [param.name, param.default ?? ''])
-    );
-  }
-
   function buildRequestParams(currentProvider: ProviderInfo | undefined): Record<string, unknown> {
     if (!currentProvider) return {};
     const result: Record<string, unknown> = {};
@@ -204,8 +171,10 @@ export function BottomPromptBar({
   const currentProviders = mode === 'image' ? imageProviders : videoProviders;
   const currentProvider = currentProviders.find((provider) => provider.vendor === selectedVendor);
   const exposedParams = currentProvider?.info.exposed_params ?? [];
-  const visibleParams = exposedParams.filter((param) => !isImageParam(param));
-  const showVendorChip = !(mode === 'image' && currentProviders.length === 1 && currentProviders[0]?.vendor === 'gemini');
+  const visibleParams = exposedParams.filter((param) => !isImageParam(param) && param.name !== 'model_name');
+  const modelChoices = getModelChoices(currentProvider);
+  const selectedModel = typeof params.model_name === 'string' ? params.model_name : modelChoices[0] ?? '';
+  const showVendorChip = currentProviders.length > 0;
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -264,9 +233,25 @@ export function BottomPromptBar({
       }
 
       if (mode === 'image') {
-        onImageGenerated(data.content as string);
+        onImageGenerated({
+          content: data.content as string,
+          generation: {
+            mode,
+            vendor: selectedVendor,
+            parameters: requestParams,
+            prompt: prompt.trim(),
+          },
+        });
       } else {
-        onVideoGenerated(data.content as string);
+        onVideoGenerated({
+          content: data.content as string,
+          generation: {
+            mode,
+            vendor: selectedVendor,
+            parameters: requestParams,
+            prompt: prompt.trim(),
+          },
+        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '请求失败，请检查后端服务');
@@ -384,8 +369,18 @@ export function BottomPromptBar({
     return null;
   }
 
+  const hasAnchor = anchorX !== undefined && anchorY !== undefined;
+  const barStyle: React.CSSProperties = hasAnchor
+    ? {
+        left: Math.max(280, Math.min(anchorX, window.innerWidth - 280)),
+        top: anchorY + 20,
+        bottom: 'auto',
+        transform: 'translateX(-50%)',
+      }
+    : {};
+
   return (
-    <div className="bottom-prompt-bar" onClick={() => setOpenChip(null)}>
+    <div className="bottom-prompt-bar" style={barStyle} onClick={() => setOpenChip(null)}>
       <div className="selection-context-row">
         <div className="selection-context-copy">
           <span className="selection-context-kicker">{selection.kind}</span>
@@ -462,7 +457,7 @@ export function BottomPromptBar({
                   <circle cx="12" cy="12" r="3" />
                   <path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
                 </svg>
-                {shortLabel(selectedVendor)}
+                {getProviderLabel(selectedVendor)}
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M2 3.5l3 3 3-3" strokeLinecap="round" />
                 </svg>
@@ -478,7 +473,40 @@ export function BottomPromptBar({
                         setOpenChip(null);
                       }}
                     >
-                      {shortLabel(provider.vendor)}
+                      {getProviderLabel(provider.vendor)}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {modelChoices.length > 0 ? (
+            <div className="chip-wrapper">
+              <button
+                className={`param-chip ${openChip === '__model' ? 'open' : ''}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpenChip(openChip === '__model' ? null : '__model');
+                }}
+              >
+                {getModelLabel(selectedModel)}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M2 3.5l3 3 3-3" strokeLinecap="round" />
+                </svg>
+              </button>
+              {openChip === '__model' ? (
+                <div className="chip-dropdown">
+                  {modelChoices.map((choice) => (
+                    <button
+                      key={choice}
+                      className={`chip-option ${selectedModel === choice ? 'selected' : ''}`}
+                      onClick={() => {
+                        setParams((prev) => ({ ...prev, model_name: choice }));
+                        setOpenChip(null);
+                      }}
+                    >
+                      {getModelLabel(choice)}
                     </button>
                   ))}
                 </div>

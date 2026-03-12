@@ -6,13 +6,16 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from src.backend.config import config
 from src.backend.models import Asset
 from src.backend.schemas import AssetResponse, AssetTags, AssetUpdate
-from src.backend.services._helpers import DEFAULT_LLM_VENDOR, asset_to_response, dumps_json, file_to_data_url
+from src.backend.services._helpers import DEFAULT_LLM_VENDOR, asset_to_response, dumps_json
 from src.backend.services.prompt_templates import render_asset_tagging_prompt
 from src.backend.services.project_service import ProjectService
 from src.backend.services.provider_service import LLMService
@@ -33,6 +36,47 @@ def _extract_json_object(content: str) -> dict[str, Any] | None:
     if isinstance(parsed, dict):
         return parsed
     return None
+
+
+def _detect_image_extension(content: bytes, content_type: str | None, filename: str) -> str:
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return ".gif"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return ".webp"
+
+    lowered_type = (content_type or "").lower()
+    mapped = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+    }
+    if lowered_type in mapped:
+        return mapped[lowered_type]
+
+    lowered_name = filename.lower()
+    for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        if lowered_name.endswith(ext):
+            return ".jpg" if ext == ".jpeg" else ext
+
+    raise ValueError("Only png/jpg/webp/gif images are supported.")
+
+
+def _store_uploaded_asset(project_id: str, filename: str, content_type: str | None, content: bytes) -> tuple[str, str]:
+    extension = _detect_image_extension(content, content_type, filename)
+    project_dir = Path(config.MEDIA_ROOT) / "assets" / project_id
+    project_dir.mkdir(parents=True, exist_ok=True)
+
+    stored_name = f"{uuid.uuid4().hex}{extension}"
+    stored_path = project_dir / stored_name
+    stored_path.write_bytes(content)
+    public_url = f"/media/assets/{project_id}/{stored_name}"
+    return public_url, public_url
 
 
 def _heuristic_tags(filename: str) -> AssetTags:
@@ -146,12 +190,12 @@ class AssetService:
         ProjectService.get_project(db, project_id)
         created: list[Asset] = []
         for filename, content_type, content in files:
-            url = file_to_data_url(content, content_type)
+            url, thumbnail_url = _store_uploaded_asset(project_id, filename, content_type, content)
             tags = AssetService.auto_tag_asset(filename)
             asset = Asset(
                 project_id=project_id,
                 url=url,
-                thumbnail_url=url,
+                thumbnail_url=thumbnail_url,
                 category=tags.category,
                 tags=dumps_json(tags.model_dump()),
                 original_filename=filename,
@@ -199,5 +243,12 @@ class AssetService:
     @staticmethod
     def delete_asset(db: Session, asset_id: str) -> None:
         asset = AssetService.get_asset(db, asset_id)
+        for candidate in (asset.url, asset.thumbnail_url):
+            if not candidate or not candidate.startswith("/media/"):
+                continue
+            relative = candidate.removeprefix("/media/")
+            path = Path(config.MEDIA_ROOT) / relative
+            if path.exists():
+                path.unlink()
         db.delete(asset)
         db.commit()

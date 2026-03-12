@@ -75,6 +75,7 @@ class Config:
     # 数据库配置
     # =============================================================================
     DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/muse.db")
+    MEDIA_ROOT = os.getenv("MEDIA_ROOT", "data/uploads")
 
     # Debug 模式
     # =============================================================================

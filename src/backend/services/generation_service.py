@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from src.backend.database import SessionLocal
 from src.backend.logger import get_logger
-from src.backend.models import Look, LookItem, Shot
-from src.backend.schemas import ShotAdoptRequest, ShotGenerateRequest, ShotGenerateResponse, ShotResponse
+from src.backend.models import Look, LookItem, Project, Shot
+from src.backend.schemas import ShotAdoptRequest, ShotGenerateRequest, ShotGenerateResponse, ShotResponse, ShotUpdate
 from src.backend.services._helpers import (
     DEFAULT_IMAGE_VENDOR,
     DEFAULT_VIDEO_VENDOR,
@@ -37,6 +37,15 @@ SCENE_PRESETS = {
     "scene_01": "城市街拍，自然光，轻微动态，适合通勤风。",
     "scene_02": "白色摄影棚，柔光，正面站姿，适合电商主图。",
     "scene_03": "室内生活方式场景，暖色灯光，适合内容社区分发。",
+}
+
+LOOK_ITEM_LABELS = {
+    "top": "上衣",
+    "bottom": "裤子",
+    "dress": "连衣裙",
+    "shoes": "鞋子",
+    "bag": "包袋",
+    "accessory": "配饰",
 }
 
 
@@ -70,6 +79,7 @@ class GenerationService:
     @staticmethod
     def _build_prompt(look: Look, payload: ShotGenerateRequest) -> str:
         preset_description = GenerationService._preset_description(payload.action, payload.preset_id)
+        garment_sources = GenerationService._garment_sources(look) if payload.action == "tryon" else []
         return render_shooting_prompt(
             action=payload.action,
             look_name=look.name,
@@ -77,7 +87,35 @@ class GenerationService:
             preset_description=preset_description,
             custom_prompt=payload.custom_prompt,
             reference_image_url=payload.reference_image_url,
+            parameters=payload.parameters,
+            garment_sources=garment_sources,
         )
+
+    @staticmethod
+    def _garment_sources(look: Look) -> list[str]:
+        sorted_items = sorted(look.items, key=lambda item: item.sort_order)
+        sources: list[str] = []
+        image_index = 2
+        for item in sorted_items:
+            if not item.asset or not item.asset.url:
+                continue
+            label = LOOK_ITEM_LABELS.get(item.category, item.category or "单品")
+            sources.append(f"图{image_index}的{label}")
+            image_index += 1
+        return sources
+
+    @staticmethod
+    def _input_images(look: Look, payload: ShotGenerateRequest) -> list[str]:
+        images: list[str] = []
+        if payload.reference_image_url:
+            images.append(payload.reference_image_url)
+
+        if payload.action == "tryon":
+            for item in sorted(look.items, key=lambda entry: entry.sort_order):
+                if item.asset and item.asset.url:
+                    images.append(item.asset.url)
+
+        return images
 
     @staticmethod
     def create_shot(db: Session, look_id: str, payload: ShotGenerateRequest) -> ShotGenerateResponse:
@@ -89,6 +127,7 @@ class GenerationService:
             DEFAULT_VIDEO_VENDOR if payload.type == "video" else DEFAULT_IMAGE_VENDOR
         )
         prompt = GenerationService._build_prompt(look, payload)
+        input_images = GenerationService._input_images(look, payload)
         shot = Shot(
             look_id=look.id,
             type=payload.type,
@@ -98,6 +137,7 @@ class GenerationService:
                     "action": payload.action,
                     "preset_id": payload.preset_id,
                     "reference_image_url": payload.reference_image_url,
+                    "input_images": input_images,
                     "parameters": payload.parameters,
                 }
             ),
@@ -141,9 +181,17 @@ class GenerationService:
             else:
                 params = dict(params)
                 meta = shot_to_response(shot).parameters or {}
-                reference_image_url = meta.get("reference_image_url")
-                if reference_image_url:
-                    params.setdefault("images", [reference_image_url])
+                input_images = [
+                    image
+                    for image in meta.get("input_images", [])
+                    if isinstance(image, str) and image.strip()
+                ]
+                if not input_images:
+                    reference_image_url = meta.get("reference_image_url")
+                    if isinstance(reference_image_url, str) and reference_image_url.strip():
+                        input_images = [reference_image_url]
+                if input_images:
+                    params.setdefault("images", input_images)
                 result = ImageService.generate(shot.vendor or DEFAULT_IMAGE_VENDOR, payload, **params)
                 if result.get("success"):
                     shot.url = image_data_url(result.get("content"))
@@ -177,11 +225,27 @@ class GenerationService:
         return shot_to_response(shot)
 
     @staticmethod
+    def update_shot(db: Session, shot_id: str, payload: ShotUpdate) -> ShotResponse:
+        shot = db.query(Shot).filter(Shot.id == shot_id).first()
+        if shot is None:
+            raise KeyError(shot_id)
+        if payload.canvas_position is not None:
+            shot.canvas_position = dumps_json(payload.canvas_position)
+        db.commit()
+        db.refresh(shot)
+        return shot_to_response(shot)
+
+    @staticmethod
     def adopt_shot(db: Session, shot_id: str, payload: ShotAdoptRequest) -> ShotResponse:
         shot = db.query(Shot).filter(Shot.id == shot_id).first()
         if shot is None:
             raise KeyError(shot_id)
         shot.adopted = payload.adopted
+        # PRD 5.1.1: 封面图取画布内最新采纳的一张图
+        if payload.adopted and shot.url and shot.look:
+            project = db.query(Project).filter(Project.id == shot.look.project_id).first()
+            if project is not None:
+                project.cover_url = shot.thumbnail_url or shot.url
         db.commit()
         db.refresh(shot)
         return shot_to_response(shot)

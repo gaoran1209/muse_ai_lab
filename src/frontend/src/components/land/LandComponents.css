@@ -491,6 +491,78 @@
   background: #ffffff;
 }
 
+.tryon-preset-section {
+  margin: 4px 0 0;
+}
+
+.tryon-preset-label {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.tryon-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.tryon-preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 2px solid transparent;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.tryon-preset-card:hover {
+  border-color: rgba(29, 78, 216, 0.2);
+}
+
+.tryon-preset-card.is-selected {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
+}
+
+.tryon-preset-card img {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.tryon-preset-card span {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.tryon-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 8px;
+}
+
+.tryon-divider::before,
+.tryon-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
+
+.tryon-divider span {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
 .land-modal-actions {
   display: flex;
   justify-content: flex-end;

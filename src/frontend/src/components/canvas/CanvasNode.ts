@@ -22,6 +22,33 @@ const NODE_SIZES: Record<CanvasNodeType, { width: number; height: number }> = {
 const IMAGE_CORNER_RADIUS = 24;
 const IMAGE_TITLE_OFFSET = 34;
 
+function getImageSourceSize(image: FabricImage, fallback: { width: number; height: number }) {
+  const element = image.getElement() as
+    | HTMLImageElement
+    | HTMLCanvasElement
+    | HTMLVideoElement
+    | undefined;
+
+  const naturalWidth =
+    ('naturalWidth' in (element ?? {}) ? Number((element as HTMLImageElement).naturalWidth) : 0) ||
+    ('videoWidth' in (element ?? {}) ? Number((element as HTMLVideoElement).videoWidth) : 0) ||
+    ('width' in (element ?? {}) ? Number((element as HTMLImageElement | HTMLCanvasElement).width) : 0) ||
+    image.width ||
+    fallback.width;
+
+  const naturalHeight =
+    ('naturalHeight' in (element ?? {}) ? Number((element as HTMLImageElement).naturalHeight) : 0) ||
+    ('videoHeight' in (element ?? {}) ? Number((element as HTMLVideoElement).videoHeight) : 0) ||
+    ('height' in (element ?? {}) ? Number((element as HTMLImageElement | HTMLCanvasElement).height) : 0) ||
+    image.height ||
+    fallback.height;
+
+  return {
+    width: naturalWidth > 0 ? naturalWidth : fallback.width,
+    height: naturalHeight > 0 ? naturalHeight : fallback.height,
+  };
+}
+
 function nodeCopy(type: CanvasNodeType) {
   if (type === 'text') {
     return {
@@ -62,27 +89,26 @@ async function buildVisualLayer(
         height: size.height,
         rx: IMAGE_CORNER_RADIUS,
         ry: IMAGE_CORNER_RADIUS,
-        originX: 'left',
-        originY: 'top',
+        originX: 'center',
+        originY: 'center',
       });
       const image = await FabricImage.fromURL(config.imageUrl, {
         ...(config.imageUrl.startsWith('data:') ? {} : { crossOrigin: 'anonymous' }),
       });
       image.set({
-        left: 0,
-        top: 0,
-        originX: 'left',
-        originY: 'top',
+        left: size.width / 2,
+        top: size.height / 2,
+        originX: 'center',
+        originY: 'center',
         selectable: false,
         evented: false,
         clipPath: clip,
       });
-      const scale = Math.max(size.width / (image.width ?? size.width), size.height / (image.height ?? size.height));
+      const sourceSize = getImageSourceSize(image, size);
+      // For look-item-node (fixed-size container), use cover to fill the whole area.
+      // For other image nodes we also upscale to fill the available area.
+      const scale = Math.max(size.width / sourceSize.width, size.height / sourceSize.height);
       image.scale(scale);
-      image.set({
-        left: (size.width - image.getScaledWidth()) / 2,
-        top: (size.height - image.getScaledHeight()) / 2,
-      });
       image.set('name', 'media-image');
       objects.push(image);
       return objects;
@@ -147,8 +173,9 @@ async function resolveNodeSize(config: CanvasNodeConfig): Promise<{ width: numbe
     const image = await FabricImage.fromURL(config.imageUrl, {
       ...(config.imageUrl.startsWith('data:') ? {} : { crossOrigin: 'anonymous' }),
     });
-    const width = image.width ?? baseSize.width;
-    const height = image.height ?? baseSize.height;
+    const sourceSize = getImageSourceSize(image, baseSize);
+    const width = sourceSize.width;
+    const height = sourceSize.height;
     if (width <= 0 || height <= 0) {
       return baseSize;
     }
@@ -227,8 +254,22 @@ export async function createCanvasNodeGroup(
     statusText.set('name', 'status-text');
   }
 
+  // PRD 5.1.3.2: 左上角使用文字标识对象类型 Text|Image|Video
+  const typeBadge = new Textbox(copy.title, {
+    left: 12,
+    top: 10,
+    width: 60,
+    fontSize: 10,
+    fontFamily: 'Avenir Next, SF Pro Display, PingFang SC, sans-serif',
+    fontWeight: '700',
+    fill: 'rgba(255, 255, 255, 0.52)',
+    selectable: false,
+    evented: false,
+  });
+  typeBadge.set('name', 'type-badge');
+
   const visualLayer = await buildVisualLayer(config, size);
-  const objects: FabricObject[] = [title, shell, ...visualLayer];
+  const objects: FabricObject[] = [title, shell, ...visualLayer, typeBadge];
   if (statusText) {
     objects.push(statusText);
   }
@@ -239,7 +280,10 @@ export async function createCanvasNodeGroup(
     originX: 'center',
     originY: 'center',
     hasControls: false,
-    hasBorders: false,
+    hasBorders: true,
+    borderColor: 'rgba(126, 156, 255, 0.72)',
+    borderScaleFactor: 2.4,
+    padding: 4,
     hoverCursor: 'pointer',
   });
 

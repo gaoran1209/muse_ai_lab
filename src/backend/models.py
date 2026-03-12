@@ -36,6 +36,7 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(200), nullable=False, default="Untitled Project")
     cover_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    canvas_state: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON string
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 

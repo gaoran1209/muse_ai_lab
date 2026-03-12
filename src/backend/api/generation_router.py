@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.backend.database import get_db
-from src.backend.schemas import ShotAdoptRequest, ShotGenerateRequest, ShotGenerateResponse, ShotResponse
+from src.backend.schemas import ShotAdoptRequest, ShotGenerateRequest, ShotGenerateResponse, ShotResponse, ShotUpdate
 from src.backend.services.generation_service import GenerationService
 
 router = APIRouter(tags=["generation"])
@@ -41,6 +41,14 @@ def generate_shot(
 def get_shot(shot_id: str, db: Session = Depends(get_db)) -> ShotResponse:
     try:
         return GenerationService.get_shot(db, shot_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Shot not found") from exc
+
+
+@router.patch("/api/v1/shots/{shot_id}", response_model=ShotResponse)
+def update_shot(shot_id: str, payload: ShotUpdate, db: Session = Depends(get_db)) -> ShotResponse:
+    try:
+        return GenerationService.update_shot(db, shot_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Shot not found") from exc
 

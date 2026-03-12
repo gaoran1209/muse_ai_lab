@@ -99,22 +99,6 @@
   font-size: 12px;
 }
 
-.canvas-results-toggle {
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(244, 246, 251, 0.86);
-  font-size: 12px;
-}
-
-.canvas-results-toggle.is-open {
-  background: rgba(224, 236, 255, 0.14);
-  color: #f6fbff;
-  border-color: rgba(159, 188, 255, 0.26);
-}
-
 .canvas-status .is-error {
   color: #ffab9f;
 }

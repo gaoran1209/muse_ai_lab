@@ -1,28 +1,16 @@
 import { useState, useEffect } from 'react';
 import './ImageActionPanel.css';
-
-// ==================== 类型定义 ====================
-
-type GenerationMode = 'image' | 'video';
-
-interface ExposedParam {
-  name: string;
-  type: string;
-  default: unknown;
-  description: string;
-  choices: string[] | null;
-  required: boolean;
-}
-
-interface ProviderInfo {
-  vendor: string;
-  model: string;
-  available: boolean;
-  info: {
-    provider_type: string;
-    exposed_params: ExposedParam[];
-  };
-}
+import {
+  buildDefaults,
+  type ExposedParam,
+  getModelChoices,
+  getModelLabel,
+  getProviderLabel,
+  getVisibleProviders,
+  isImageParam,
+  type ProviderInfo,
+  type GenerationMode,
+} from './providerOptions';
 
 interface Props {
   /** 面板锚点：图片右边缘的屏幕坐标 */
@@ -34,27 +22,9 @@ interface Props {
 
 // ==================== 工具函数 ====================
 
-const IMAGE_MODEL_LABELS: Record<string, string> = {
-  'gemini-3.1-flash-image-preview': 'Nano Banana 2',
-  'gemini-3-pro-image-preview': 'Nano Banana Pro',
-};
-
-function shortLabel(vendor: string): string {
-  const map: Record<string, string> = {
-    '302ai_nano_banana': 'Nano Banana',
-    '302ai_seedream': 'Seedream',
-    '302ai_kling': 'Kling',
-    zhipu: 'Zhipu',
-    gemini: 'Gemini',
-    '302ai': '302.AI',
-    '302ai_gemini': '302.AI Gemini',
-  };
-  return map[vendor] ?? vendor;
-}
-
 function choiceLabel(param: ExposedParam, value: unknown): string {
   if (param.name === 'model_name') {
-    return IMAGE_MODEL_LABELS[String(value)] ?? String(value);
+    return getModelLabel(String(value));
   }
   return String(value);
 }
@@ -157,11 +127,13 @@ export function ImageActionPanel({ anchor, onClose, onImageGenerated }: Props) {
       fetch('/api/v1/video/providers').then((r) => r.json()),
     ])
       .then(([imgList, vidList]: [ProviderInfo[], ProviderInfo[]]) => {
-        setImageProviders(imgList);
-        setVideoProviders(vidList);
-        if (imgList.length > 0) {
-          setSelectedVendor(imgList[0].vendor);
-          setParams(buildDefaults(imgList[0]));
+        const visibleImageProviders = getVisibleProviders('image', imgList);
+        const visibleVideoProviders = getVisibleProviders('video', vidList);
+        setImageProviders(visibleImageProviders);
+        setVideoProviders(visibleVideoProviders);
+        if (visibleImageProviders.length > 0) {
+          setSelectedVendor(visibleImageProviders[0].vendor);
+          setParams(buildDefaults(visibleImageProviders[0]));
         }
       })
       .catch(() => setError('无法获取厂商列表，请检查后端服务'));
@@ -187,24 +159,20 @@ export function ImageActionPanel({ anchor, onClose, onImageGenerated }: Props) {
       setError(null);
     }
   }, [selectedVendor]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function buildDefaults(provider: ProviderInfo): Record<string, unknown> {
-    const defaults: Record<string, unknown> = {};
-    for (const param of provider.info.exposed_params) {
-      defaults[param.name] = param.default ?? '';
-    }
-    return defaults;
-  }
-
   const currentProviders = mode === 'image' ? imageProviders : videoProviders;
   const currentProvider = currentProviders.find((p) => p.vendor === selectedVendor);
-  const showVendorField = !(mode === 'image' && currentProviders.length === 1 && currentProviders[0]?.vendor === 'gemini');
+  const modelChoices = getModelChoices(currentProvider);
+  const selectedModel = typeof params.model_name === 'string' ? params.model_name : modelChoices[0] ?? '';
+  const visibleParams = (currentProvider?.info.exposed_params ?? []).filter(
+    (param) => !isImageParam(param) && param.name !== 'model_name'
+  );
 
   // 处理参数中的 list[str] 类型（从逗号字符串转为数组）
   function buildRequestParams(): Record<string, unknown> {
     if (!currentProvider) return {};
     const result: Record<string, unknown> = {};
     for (const param of currentProvider.info.exposed_params) {
+      if (isImageParam(param)) continue;
       const val = params[param.name];
       if (val === '' || val === null || val === undefined) continue;
       if (param.type.startsWith('list')) {
@@ -304,24 +272,38 @@ export function ImageActionPanel({ anchor, onClose, onImageGenerated }: Props) {
       </div>
 
       <div className="panel-body">
-        {/* 厂商选择 */}
-        {showVendorField && (
+        <div className="panel-field">
+          <label className="panel-label">服务商</label>
+          <select
+            className="panel-select"
+            value={selectedVendor}
+            onChange={(e) => setSelectedVendor(e.target.value)}
+            disabled={currentProviders.length === 0}
+          >
+            {currentProviders.map((p) => (
+              <option key={p.vendor} value={p.vendor}>
+                {getProviderLabel(p.vendor)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {modelChoices.length > 0 ? (
           <div className="panel-field">
-            <label className="panel-label">厂商</label>
+            <label className="panel-label">模型型号</label>
             <select
               className="panel-select"
-              value={selectedVendor}
-              onChange={(e) => setSelectedVendor(e.target.value)}
-              disabled={currentProviders.length === 0}
+              value={selectedModel}
+              onChange={(e) => setParams((prev) => ({ ...prev, model_name: e.target.value }))}
             >
-              {currentProviders.map((p) => (
-                <option key={p.vendor} value={p.vendor}>
-                  {shortLabel(p.vendor)}
+              {modelChoices.map((choice) => (
+                <option key={choice} value={choice}>
+                  {getModelLabel(choice)}
                 </option>
               ))}
             </select>
           </div>
-        )}
+        ) : null}
 
         {/* 提示词 */}
         <div className="panel-field">
@@ -336,10 +318,10 @@ export function ImageActionPanel({ anchor, onClose, onImageGenerated }: Props) {
         </div>
 
         {/* 动态参数 */}
-        {currentProvider && currentProvider.info.exposed_params.length > 0 && (
+        {currentProvider && visibleParams.length > 0 && (
           <div className="panel-params-section">
             <div className="panel-params-title">参数</div>
-            {currentProvider.info.exposed_params.map((param) => (
+            {visibleParams.map((param) => (
               <ParamField
                 key={param.name}
                 param={param}

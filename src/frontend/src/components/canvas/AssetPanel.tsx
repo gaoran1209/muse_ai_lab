@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Asset, AssetTags } from '../../types';
 import './AssetPanel.css';
 
-const CATEGORIES: Array<{ value: 'all' | Asset['category']; label: string }> = [
-  { value: 'all', label: '全部' },
+const CATEGORIES: Array<{ value: Asset['category']; label: string }> = [
   { value: 'product', label: '商品' },
   { value: 'model', label: '模特' },
   { value: 'background', label: '背景' },
@@ -11,16 +10,50 @@ const CATEGORIES: Array<{ value: 'all' | Asset['category']; label: string }> = [
 ];
 
 interface AssetPanelProps {
+  open: boolean;
   assets: Asset[];
-  activeCategory: 'all' | Asset['category'];
+  activeCategory: Asset['category'];
   busy: boolean;
-  onCategoryChange: (category: 'all' | Asset['category']) => void;
+  onCategoryChange: (category: Asset['category']) => void;
   onUpload: (files: FileList | null) => void;
   onDeleteAsset: (assetId: string) => void;
   onUpdateAsset: (assetId: string, payload: { category?: Asset['category']; tags?: AssetTags }) => void;
+  onToggleOpen: () => void;
+}
+
+function AssetImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  if (failed) {
+    return <div className={`asset-image-fallback ${className ?? ''}`}>加载失败</div>;
+  }
+
+  return (
+    <img
+      className={className}
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 export function AssetPanel({
+  open,
   assets,
   activeCategory,
   busy,
@@ -28,6 +61,7 @@ export function AssetPanel({
   onUpload,
   onDeleteAsset,
   onUpdateAsset,
+  onToggleOpen,
 }: AssetPanelProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
@@ -40,10 +74,7 @@ export function AssetPanel({
     season: '',
     occasion: '',
   });
-  const visibleAssets =
-    activeCategory === 'all'
-      ? assets
-      : assets.filter((asset) => asset.category === activeCategory);
+  const visibleAssets = assets.filter((asset) => asset.category === activeCategory);
   const editingAsset = useMemo(
     () => assets.find((asset) => asset.id === editingAssetId) ?? null,
     [assets, editingAssetId]
@@ -63,93 +94,118 @@ export function AssetPanel({
 
   return (
     <>
-      <aside
-        className={`asset-panel ${isDragOver ? 'is-dragover' : ''}`}
-        onDragOver={(event) => {
-          if (event.dataTransfer.files.length === 0) return;
-          event.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={(event) => {
-          if (event.dataTransfer.files.length === 0) return;
-          event.preventDefault();
-          setIsDragOver(false);
-          onUpload(event.dataTransfer.files);
-        }}
-      >
-        <div className="asset-panel-header">
-          <div>
-            <span className="asset-panel-eyebrow">Asset library</span>
-            <h2>素材库</h2>
-          </div>
-        </div>
-
-        <div className="asset-tabs" role="tablist" aria-label="Asset categories">
-          {CATEGORIES.map((category) => (
+      <div className={`asset-panel-shell ${open ? 'is-open' : 'is-collapsed'}`}>
+        <aside
+          className={`asset-panel ${isDragOver ? 'is-dragover' : ''}`}
+          onDragOver={(event) => {
+            if (event.dataTransfer.files.length === 0 || !open) return;
+            event.preventDefault();
+            setIsDragOver(true);
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(event) => {
+            if (event.dataTransfer.files.length === 0 || !open) return;
+            event.preventDefault();
+            setIsDragOver(false);
+            onUpload(event.dataTransfer.files);
+          }}
+        >
+          <div className="asset-panel-header">
+            <div>
+              <span className="asset-panel-eyebrow">Asset library</span>
+              <h2>素材库</h2>
+            </div>
             <button
-              key={category.value}
               type="button"
-              className={category.value === activeCategory ? 'is-active' : ''}
-              onClick={() => onCategoryChange(category.value)}
+              className="asset-panel-collapse-btn"
+              onClick={onToggleOpen}
+              aria-label="收起素材库"
             >
-              {category.label}
+              ‹
             </button>
-          ))}
-        </div>
+          </div>
 
-        <div className="asset-grid">
-          {visibleAssets.map((asset) => (
-            <div key={asset.id} className="asset-card-wrap">
+          <div className="asset-tabs" role="tablist" aria-label="Asset categories">
+            {CATEGORIES.map((category) => (
               <button
+                key={category.value}
                 type="button"
-                className="asset-card"
-                draggable
-                onDragStart={(event) => {
-                  event.dataTransfer.setData(
-                    'application/json',
-                    JSON.stringify({
-                      id: asset.id,
-                      url: asset.url,
-                      label: asset.original_filename ?? asset.id,
-                    })
-                  );
-                  event.dataTransfer.effectAllowed = 'copy';
-                }}
+                className={category.value === activeCategory ? 'is-active' : ''}
+                onClick={() => onCategoryChange(category.value)}
               >
-                <img src={asset.thumbnail_url ?? asset.url} alt={asset.original_filename ?? asset.id} />
-                <span>{asset.original_filename ?? asset.tags?.subcategory ?? asset.category}</span>
+                {category.label}
               </button>
-              <div className="asset-card-overlay">
-                <button type="button" onClick={() => setPreviewAsset(asset)}>
-                  预览
-                </button>
-                <button type="button" onClick={() => setEditingAssetId(asset.id)}>
-                  标签
-                </button>
+            ))}
+          </div>
+
+          <div className="asset-grid">
+            {visibleAssets.map((asset) => (
+              <div key={asset.id} className="asset-card-wrap">
                 <button
                   type="button"
-                  className="is-danger"
-                  onClick={() => {
-                    const confirmed = window.confirm(`确认删除素材“${asset.original_filename ?? asset.id}”？`);
-                    if (confirmed) {
-                      onDeleteAsset(asset.id);
-                    }
+                  className="asset-card"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(
+                      'application/json',
+                      JSON.stringify({
+                        id: asset.id,
+                        url: asset.url,
+                        label: asset.original_filename ?? asset.id,
+                      })
+                    );
+                    event.dataTransfer.effectAllowed = 'copy';
                   }}
                 >
-                  删除
+                  <AssetImage
+                    src={asset.thumbnail_url ?? asset.url}
+                    alt={asset.original_filename ?? asset.id}
+                  />
+                  <span>{asset.original_filename ?? asset.tags?.subcategory ?? asset.category}</span>
                 </button>
+                <div className="asset-card-overlay">
+                  <button type="button" onClick={() => setPreviewAsset(asset)}>
+                    预览
+                  </button>
+                  <button type="button" onClick={() => setEditingAssetId(asset.id)}>
+                    标签
+                  </button>
+                  <button
+                    type="button"
+                    className="is-danger"
+                    onClick={() => {
+                      const confirmed = window.confirm(`确认删除素材“${asset.original_filename ?? asset.id}”？`);
+                      if (confirmed) {
+                        onDeleteAsset(asset.id);
+                      }
+                    }}
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-          {visibleAssets.length === 0 ? (
-            <div className="asset-empty">
-              <strong>{busy ? '上传中...' : '拖拽图片到这里上传'}</strong>
-              <span>当前列表为空时，整个素材库区域可作为上传落点。</span>
-            </div>
-          ) : null}
-        </div>
-      </aside>
+            ))}
+            {visibleAssets.length === 0 ? (
+              <div className="asset-empty">
+                <strong>{busy ? '上传中...' : '拖拽图片到这里上传'}</strong>
+                <span>当前列表为空时，整个素材库区域可作为上传落点。</span>
+              </div>
+            ) : null}
+          </div>
+        </aside>
+
+        {!open ? (
+          <button
+            type="button"
+            className="asset-panel-toggle"
+            onClick={onToggleOpen}
+            aria-expanded={false}
+            aria-label="展开素材库"
+          >
+            ›
+          </button>
+        ) : null}
+      </div>
 
       {previewAsset ? (
         <div className="asset-modal-backdrop" role="presentation" onClick={() => setPreviewAsset(null)}>
@@ -163,7 +219,7 @@ export function AssetPanel({
                 关闭
               </button>
             </header>
-            <img
+            <AssetImage
               className="asset-preview-image"
               src={previewAsset.url}
               alt={previewAsset.original_filename ?? previewAsset.id}

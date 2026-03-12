@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AssetPanel } from '../components/canvas/AssetPanel';
+import type { QuickAction } from '../components/canvas/FloatingToolbar';
 import { GenerationActionDialog } from '../components/canvas/GenerationActionDialog';
 import { InfiniteCanvas } from '../components/canvas/InfiniteCanvas';
 import { PublishDialog } from '../components/canvas/PublishDialog';
 import { ResultPanel } from '../components/canvas/ResultPanel';
+import { useCanvasAutosave } from '../hooks/useCanvasAutosave';
 import { useSparkStore } from '../store';
 import './Canvas.css';
 
@@ -22,6 +24,7 @@ export default function CanvasPage() {
     loadingWorkspace,
     busy,
     error,
+    projectCanvasState,
     loadWorkspace,
     renameProject,
     setActiveCategory,
@@ -32,15 +35,20 @@ export default function CanvasPage() {
     generateShotForLook,
     togglePublishShotSelection,
     setShotAdopted,
+    saveLookDraft,
+    saveShotCanvasPosition,
+    saveProjectCanvasState,
     replaceLookItemAsset,
     publishSelectedShots,
     clearPublishSelection,
   } = useSparkStore();
   const [publishLookId, setPublishLookId] = useState<string | null>(null);
+  const [assetPanelOpen, setAssetPanelOpen] = useState(true);
   const [resultPanelOpen, setResultPanelOpen] = useState(false);
   const [generationDialog, setGenerationDialog] = useState<{
     lookId: string;
-    action: 'change_model' | 'change_background';
+    action: 'change_model' | 'change_background' | 'tryon';
+    defaultMode?: string;
   } | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [draftProjectName, setDraftProjectName] = useState('');
@@ -53,6 +61,16 @@ export default function CanvasPage() {
   useEffect(() => {
     setDraftProjectName(activeProject?.name ?? '');
   }, [activeProject?.name]);
+
+  const { initialCanvasState, reportCanvasStateChange, saveLabel } = useCanvasAutosave({
+    projectId: projectId ?? null,
+    looks,
+    shots,
+    serverCanvasState: projectCanvasState,
+    saveLookDraft,
+    saveShotCanvasPosition,
+    saveProjectCanvasState,
+  });
 
   if (!projectId) {
     return null;
@@ -92,6 +110,32 @@ export default function CanvasPage() {
       // 错误由全局 store 状态展示，保持编辑态便于用户继续修改
     }
   };
+
+  const handleQuickAction = useCallback(
+    (action: QuickAction, _imageUrl: string | null) => {
+      const actionMap: Record<QuickAction, { dialogAction: 'change_background' | 'change_model' | 'tryon'; mode?: string }> = {
+        bg_blend: { dialogAction: 'change_background', mode: 'blend' },
+        bg_replace: { dialogAction: 'change_background', mode: 'replace' },
+        model_replicate: { dialogAction: 'change_model', mode: 'replicate' },
+        model_swap_face: { dialogAction: 'change_model', mode: 'swap_face' },
+        tryon: { dialogAction: 'tryon' },
+      };
+
+      const mapped = actionMap[action];
+      if (!mapped) return;
+
+      // Use the first available look as context; if none exists, use empty string
+      // so the dialog can still open (generation will use the selected image).
+      const targetLookId = looks[0]?.id ?? '';
+
+      setGenerationDialog({
+        lookId: targetLookId,
+        action: mapped.dialogAction,
+        defaultMode: mapped.mode,
+      });
+    },
+    [looks]
+  );
 
   return (
     <div className="canvas-page">
@@ -139,28 +183,23 @@ export default function CanvasPage() {
           )}
         </div>
         <div className="canvas-status">
-          <button
-            type="button"
-            className={`canvas-results-toggle ${resultPanelOpen ? 'is-open' : ''}`}
-            onClick={() => setResultPanelOpen((value) => !value)}
-          >
-            {resultPanelOpen ? '关闭结果箱' : '结果箱'}
-          </button>
           {loadingWorkspace ? <span>Loading workspace...</span> : null}
           {busy ? <span>Syncing API...</span> : null}
+          {saveLabel ? <span>{saveLabel}</span> : null}
           {error ? <span className="is-error">{error}</span> : null}
         </div>
       </header>
 
       <main className="canvas-layout">
         <AssetPanel
+          open={assetPanelOpen}
           assets={assets}
           activeCategory={activeCategory}
           busy={busy}
           onCategoryChange={setActiveCategory}
           onUpload={(files) => {
             if (!files || files.length === 0) return;
-            const category = activeCategory === 'all' ? 'product' : activeCategory;
+            const category = activeCategory;
             void uploadAssetFiles(projectId, Array.from(files), category);
           }}
           onDeleteAsset={(assetId) => {
@@ -169,15 +208,19 @@ export default function CanvasPage() {
           onUpdateAsset={(assetId, payload) => {
             void updateAssetMeta(assetId, payload);
           }}
+          onToggleOpen={() => setAssetPanelOpen((value) => !value)}
         />
 
         <InfiniteCanvas
+          projectId={projectId}
           looks={looks}
           shots={shots}
           busy={busy}
+          initialCanvasState={initialCanvasState}
+          onCanvasStateChange={reportCanvasStateChange}
           onUploadFiles={(files) => {
-            const category = activeCategory === 'all' ? 'product' : activeCategory;
-            return uploadAssetFiles(projectId, files, category);
+            const category = activeCategory;
+            return uploadAssetFiles(projectId, files, category).then(() => undefined);
           }}
           onGenerateLooks={async (assetIds) => {
             await generateLooksForAssets(projectId, {
@@ -187,7 +230,7 @@ export default function CanvasPage() {
             });
           }}
           onGenerateShot={async (lookId, action, customPrompt) => {
-            if (action === 'change_model' || action === 'change_background') {
+            if (action === 'change_model' || action === 'change_background' || action === 'tryon') {
               setGenerationDialog({ lookId, action });
               return;
             }
@@ -196,16 +239,31 @@ export default function CanvasPage() {
               customPrompt,
             });
           }}
+          onGenerateVideo={(lookId) => {
+            void generateShotForLook(projectId, lookId, {
+              type: 'video',
+              action: 'custom',
+              customPrompt: looks.find((l) => l.id === lookId)?.description ?? '',
+            });
+          }}
           onToggleAdopt={(shotId, adopted) => {
             void setShotAdopted(projectId, shotId, adopted);
+          }}
+          onSaveLookBoardPosition={(lookId, boardPosition) => {
+            void saveLookDraft(lookId, { boardPosition });
+          }}
+          onSaveShotCanvasPosition={(shotId, canvasPosition) => {
+            void saveShotCanvasPosition(shotId, canvasPosition);
           }}
           onReplaceLookItemAsset={(lookId, itemId, assetId) => {
             void replaceLookItemAsset(lookId, itemId, assetId);
           }}
+          onQuickAction={handleQuickAction}
         />
 
         <ResultPanel
           open={resultPanelOpen}
+          onToggleOpen={() => setResultPanelOpen((value) => !value)}
           looks={looks}
           shots={shots}
           selectedShotIds={selectedPublishShotIds}
@@ -233,15 +291,19 @@ export default function CanvasPage() {
       <GenerationActionDialog
         open={generationDialog !== null}
         look={generationLook}
+        assets={assets}
         action={generationDialog?.action ?? null}
+        defaultMode={generationDialog?.defaultMode}
         busy={busy}
         onClose={() => setGenerationDialog(null)}
-        onSubmit={async ({ presetId, customPrompt, parameters }) => {
+        onUploadReference={async (files) => uploadAssetFiles(projectId, files, 'model')}
+        onSubmit={async ({ presetId, customPrompt, referenceImageUrl, parameters }) => {
           if (!generationDialog) return;
           await generateShotForLook(projectId, generationDialog.lookId, {
             action: generationDialog.action,
             presetId,
             customPrompt,
+            referenceImageUrl,
             parameters,
           });
           setGenerationDialog(null);

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from src.backend.database import get_db
-from src.backend.schemas import ProjectCreate, ProjectResponse, ProjectUpdate
+from src.backend.schemas import ProjectCanvasStateResponse, ProjectCanvasStateUpdate, ProjectCreate, ProjectResponse, ProjectUpdate
 from src.backend.services.project_service import ProjectService
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
@@ -34,6 +34,26 @@ def get_project(project_id: str, db: Session = Depends(get_db)) -> ProjectRespon
 def update_project(project_id: str, payload: ProjectUpdate, db: Session = Depends(get_db)) -> ProjectResponse:
     try:
         return ProjectService.update_project(db, project_id, payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+
+
+@router.get("/{project_id}/canvas-state", response_model=ProjectCanvasStateResponse)
+def get_project_canvas_state(project_id: str, db: Session = Depends(get_db)) -> ProjectCanvasStateResponse:
+    try:
+        return ProjectService.get_canvas_state(db, project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Project not found") from exc
+
+
+@router.patch("/{project_id}/canvas-state", response_model=ProjectCanvasStateResponse)
+def update_project_canvas_state(
+    project_id: str,
+    payload: ProjectCanvasStateUpdate,
+    db: Session = Depends(get_db),
+) -> ProjectCanvasStateResponse:
+    try:
+        return ProjectService.update_canvas_state(db, project_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Project not found") from exc
 

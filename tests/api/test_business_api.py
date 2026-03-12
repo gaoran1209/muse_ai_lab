@@ -9,6 +9,11 @@ client = TestClient(app)
 ORIGINAL_LLM_GENERATE = LLMService.generate
 ORIGINAL_IMAGE_GENERATE = ImageService.generate
 ORIGINAL_VIDEO_GENERATE = VideoService.generate
+MINIMAL_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00"
+    b"\x00\x04\x00\x01\xf6\x178U\x00\x00\x00\x00IEND\xaeB`\x82"
+)
 
 
 def _fake_llm_generate(vendor: str, prompt: str, **kwargs):
@@ -87,13 +92,15 @@ def test_full_business_flow():
     upload_resp = client.post(
         f"/api/v1/projects/{project['id']}/assets",
         files=[
-            ("files", ("black_dress.png", b"img-a", "image/png")),
-            ("files", ("studio_background.png", b"img-b", "image/png")),
+            ("files", ("black_dress.png", MINIMAL_PNG, "image/png")),
+            ("files", ("studio_background.png", MINIMAL_PNG, "image/png")),
         ],
     )
     assert upload_resp.status_code == 201
     assets = upload_resp.json()
     assert len(assets) == 2
+    assert assets[0]["url"].startswith("/media/assets/")
+    assert assets[0]["thumbnail_url"].startswith("/media/assets/")
 
     list_assets_resp = client.get(f"/api/v1/projects/{project['id']}/assets")
     assert list_assets_resp.status_code == 200
@@ -174,6 +181,54 @@ def test_full_business_flow():
     assert shot["status"] in {"completed", "queued", "processing"}
     assert shot["content_id"] is None
 
+    update_shot_resp = client.patch(
+        f"/api/v1/shots/{shot_id}",
+        json={"canvas_position": {"x": 222, "y": 333}},
+    )
+    assert update_shot_resp.status_code == 200
+    assert update_shot_resp.json()["canvas_position"] == {"x": 222, "y": 333}
+
+    canvas_state_resp = client.patch(
+        f"/api/v1/projects/{project['id']}/canvas-state",
+        json={
+            "canvas_state": {
+                "version": 1,
+                "lookPromptOverrides": {look_id: "editorial night look"},
+                "lookFrameOverrides": {look_id: {"x": 10, "y": 20, "width": 300, "height": 400}},
+                "shotPositionOverrides": {shot_id: {"x": 222, "y": 333}},
+                "hiddenLookIds": [],
+                "hiddenLookItemIds": [],
+                "hiddenShotIds": [],
+                "localNodes": [
+                    {
+                        "id": "prompt-node-1",
+                        "kind": "prompt-node",
+                        "type": "image",
+                        "label": "Image",
+                        "prompt": "dramatic portrait",
+                        "x": 120,
+                        "y": 180,
+                        "imageUrl": "data:image/png;base64,abc",
+                        "statusText": None,
+                        "generation": {
+                            "mode": "image",
+                            "vendor": "gemini",
+                            "parameters": {"aspect_ratio": "3:4"},
+                            "prompt": "dramatic portrait",
+                        },
+                    }
+                ],
+                "localBoards": [],
+            }
+        },
+    )
+    assert canvas_state_resp.status_code == 200
+    assert canvas_state_resp.json()["canvas_state"]["localNodes"][0]["generation"]["vendor"] == "gemini"
+
+    get_canvas_state_resp = client.get(f"/api/v1/projects/{project['id']}/canvas-state")
+    assert get_canvas_state_resp.status_code == 200
+    assert get_canvas_state_resp.json()["canvas_state"]["shotPositionOverrides"][shot_id] == {"x": 222, "y": 333}
+
     project_shots_resp = client.get(f"/api/v1/projects/{project['id']}/shots")
     assert project_shots_resp.status_code == 200
     assert {item["id"] for item in project_shots_resp.json()} >= {shot_id}
@@ -186,12 +241,15 @@ def test_full_business_flow():
     assert duplicate_project_resp.status_code == 201
     duplicate_project = duplicate_project_resp.json()
     assert duplicate_project["name"].endswith("Copy")
-    assert duplicate_project["asset_count"] == len(assets)
+    # After look generation, additional assets may be created for placeholder items (GAP-3)
+    original_assets_resp = client.get(f"/api/v1/projects/{project['id']}/assets")
+    original_asset_count = len(original_assets_resp.json())
+    assert duplicate_project["asset_count"] == original_asset_count
     assert duplicate_project["look_count"] == len(looks)
 
     duplicate_assets_resp = client.get(f"/api/v1/projects/{duplicate_project['id']}/assets")
     assert duplicate_assets_resp.status_code == 200
-    assert len(duplicate_assets_resp.json()) == 2
+    assert len(duplicate_assets_resp.json()) == original_asset_count
 
     duplicate_looks_resp = client.get(f"/api/v1/projects/{duplicate_project['id']}/looks")
     assert duplicate_looks_resp.status_code == 200
@@ -202,6 +260,10 @@ def test_full_business_flow():
     duplicate_shots_resp = client.get(f"/api/v1/projects/{duplicate_project['id']}/shots")
     assert duplicate_shots_resp.status_code == 200
     assert len(duplicate_shots_resp.json()) == 3
+
+    duplicate_canvas_state_resp = client.get(f"/api/v1/projects/{duplicate_project['id']}/canvas-state")
+    assert duplicate_canvas_state_resp.status_code == 200
+    assert duplicate_canvas_state_resp.json()["canvas_state"]["localNodes"][0]["prompt"] == "dramatic portrait"
 
     content_resp = client.post(
         "/api/v1/contents",
